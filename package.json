@@ -1,0 +1,36 @@
+{
+  "name": "roadtrip-rpg",
+  "version": "0.2.0",
+  "description": "A 2-player co-op, D&D-style game for the iPad, with an AI Game Master. Built for a long road trip.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "sim": "vite-node scripts/sim.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/G0rno/dnd-roadtrip-game.git"
+  },
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/G0rno/dnd-roadtrip-game/issues"
+  },
+  "homepage": "https://github.com/G0rno/dnd-roadtrip-game#readme",
+  "dependencies": {
+    "@fontsource/alegreya-sans": "^5.3.0",
+    "@fontsource/cinzel": "^5.3.0",
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.4",
+    "vitest": "^3.2.7"
+  },
+  "private": true,
+  "type": "module"
+}
