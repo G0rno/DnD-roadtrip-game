@@ -1,6 +1,6 @@
 // The AI Game Master: writes the story, scenes and events. Code still decides every number.
 // Every function falls back to the offline buffer or templates, so the game never waits on the API.
-import type { AiEventDraft, Difficulty, PathNode, Run, StoryBible } from '../engine/types';
+import type { AiEventDraft, Difficulty, Line, PathNode, Run, StoryBible } from '../engine/types';
 import { STATS } from '../engine/types';
 import { AiError, callJson, getApiKey, online, type Tier } from './client';
 import { loadMeta, loadSettings, saveMeta } from '../engine/save';
@@ -8,7 +8,7 @@ import { CLASSES, RACES, BACKGROUNDS } from '../engine/data/characters';
 import { REGIONS } from '../engine/data/enemies';
 import { CURSES } from '../engine/data/statuses';
 import { derive } from '../engine/character';
-import { EVENT_TYPES, nodeKey, offlineActIntro, offlineBible, offlineEnding, offlineEvent, offlineNodeScene, offlineOutro, story, type EventType } from '../engine/story';
+import { EVENT_TYPES, linesToText, nodeKey, offlineActIntro, offlineBible, offlineEnding, offlineEvent, offlineNodeScene, offlineOutro, story, textToLines, type EventType } from '../engine/story';
 
 // ---------- Prompts ----------
 
@@ -22,6 +22,7 @@ Rules you always follow:
 - Keep scenes tight: usually 60 to 130 words, unless the task asks otherwise. No headings, no bullet lists, no meta talk about games or dice.
 - Content rating: mature (18+). Graphic violence, gore, swearing, horror and dark themes are fine when they fit. Sexual content stays off-screen.
 - Recurring characters and the villain should feel alive: give them motives, voices and memorable details.
+- The story is read aloud by voices. Write it as an ordered list of "lines". Narration uses speaker "" (empty). Every piece of spoken dialogue gets its own line with the speaker's name exactly as in the story bible or as introduced (the hero names for the heroes); do not put quotation marks around dialogue, the game adds them. Use the villain's exact name when the villain speaks.
 - Reply only with JSON matching the requested schema.`;
 
 function bibleBlock(b: StoryBible): string {
@@ -119,7 +120,8 @@ const str = { type: 'string' };
 const obj = (props: Record<string, object>) => ({ type: 'object', properties: props, required: Object.keys(props), additionalProperties: false });
 const arr = (items: object) => ({ type: 'array', items });
 
-const SCENE_SCHEMA = obj({ title: str, text: str, summary: str });
+const LINES = arr(obj({ speaker: str, text: str }));
+const SCENE_SCHEMA = obj({ title: str, lines: LINES, summary: str });
 const BIBLE_SCHEMA = obj({
   title: str,
   setting: str,
@@ -134,12 +136,13 @@ const STAT_ENUM = { type: 'string', enum: [...STATS, 'none'] };
 const DIFF_ENUM = { type: 'string', enum: ['easy', 'normal', 'hard', 'veryhard'] };
 const EVENT_SCHEMA = obj({
   title: str,
-  text: str,
+  lines: LINES,
   summary: str,
   npc: obj({ name: str, role: str, description: str }),
   choices: arr(obj({ label: str, stat: STAT_ENUM, difficulty: DIFF_ENUM })),
 });
 const OUTCOME_SCHEMA = obj({ text: str });
+const OUTCOME_LINES_SCHEMA = obj({ lines: LINES });
 const FREE_SCHEMA = obj({ possible: { type: 'boolean' }, reason: str, label: str, stat: STAT_ENUM, difficulty: DIFF_ENUM });
 
 // ---------- Story bible ----------
@@ -173,6 +176,31 @@ export interface SceneText {
   title: string;
   text: string;
   summary: string;
+  lines?: Line[];
+}
+
+interface RawScene {
+  title: string;
+  lines: Line[];
+  summary: string;
+}
+
+function cleanLines(lines: Line[] | undefined): Line[] {
+  return (lines ?? []).filter((l) => l && typeof l.text === 'string' && l.text.trim()).map((l) => ({ speaker: (l.speaker ?? '').trim(), text: l.text.trim() }));
+}
+
+function toScene(r: RawScene): SceneText {
+  const lines = cleanLines(r.lines);
+  if (!lines.length) throw new Error('empty scene');
+  return { title: r.title, lines, text: linesToText(lines), summary: r.summary };
+}
+
+function offline(t: { title: string; text: string; summary?: string }): SceneText {
+  return { title: t.title, text: t.text, summary: t.summary ?? t.text.split('.')[0], lines: textToLines(t.text) };
+}
+
+async function askScene(run: Run, tier: Tier, task: string, maxTokens: number, timeoutMs: number): Promise<SceneText> {
+  return toScene(await ask<RawScene>(run, tier, task, SCENE_SCHEMA, maxTokens, timeoutMs));
 }
 
 function nodeTask(run: Run, node: PathNode): string {
@@ -191,9 +219,9 @@ function nodeTask(run: Run, node: PathNode): string {
 export async function genNodeScene(run: Run, node: PathNode): Promise<SceneText> {
   const boss = node.type === 'boss';
   try {
-    return await ask<SceneText>(run, boss ? 'sonnet' : 'haiku', nodeTask(run, node), SCENE_SCHEMA, boss ? 700 : 450, boss ? 30000 : 15000);
+    return await askScene(run, boss ? 'sonnet' : 'haiku', nodeTask(run, node), boss ? 800 : 550, boss ? 30000 : 15000);
   } catch {
-    return offlineNodeScene(run, node);
+    return offline(offlineNodeScene(run, node));
   }
 }
 
@@ -205,19 +233,18 @@ export async function genActIntro(run: Run): Promise<SceneText> {
       : `A new act begins. Briefly reflect on the lieutenant the party just defeated and what it cost, then open the new region and its lieutenant's threat. 120 to 180 words.`
   }\nReturn title, text, and summary (one sentence).`;
   try {
-    return await ask<SceneText>(run, 'sonnet', task, SCENE_SCHEMA, 900, 35000);
+    return await askScene(run, 'sonnet', task, 1000, 35000);
   } catch {
-    const o = offlineActIntro(run);
-    return { ...o, summary: o.text.split('.')[0] };
+    return offline(offlineActIntro(run));
   }
 }
 
 export async function genEnding(run: Run): Promise<SceneText> {
   const task = `${JSON.stringify(context(run))}\n\nTASK: The villain has been defeated. Write the ending of the saga: the final moments, what changed in the world, and a fitting farewell for each hero that reflects their choices. 200 to 300 words.\nReturn title, text, summary.`;
   try {
-    return await ask<SceneText>(run, 'sonnet', task, SCENE_SCHEMA, 1200, 40000);
+    return await askScene(run, 'sonnet', task, 1300, 40000);
   } catch {
-    return { title: 'The End of the Road', text: offlineEnding(run), summary: 'The villain fell.' };
+    return offline({ title: 'The End of the Road', text: offlineEnding(run), summary: 'The villain fell.' });
   }
 }
 
@@ -233,10 +260,15 @@ export async function genOutro(run: Run): Promise<string> {
   }
 }
 
-export async function genRecap(run: Run): Promise<string> {
+/** Recap on resume: 2 to 3 sentences, or a longer "previously on..." after a long break. */
+export async function genRecap(run: Run, long = false): Promise<string> {
   const j = story(run).journal;
   if (!j.length) return '';
-  const task = `${JSON.stringify(context(run, { recentStory: j.slice(-15).map((x) => x.summary) }))}\n\nTASK: The players are resuming after a break. Write a "Previously on..." recap of the story so far, focused on the latest events and the current goal. 60 to 110 words, warm and quick. Return text.`;
+  const task = `${JSON.stringify(context(run, { recentStory: j.slice(long ? -25 : -10).map((x) => x.summary) }))}\n\nTASK: The players are resuming after a break. ${
+    long
+      ? 'Write a "Previously on..." recap of the story so far: the villain, what happened this act, who they met, the choices they made, and the current goal. 110 to 170 words.'
+      : 'Write a quick recap in 2 or 3 sentences: where they are, what just happened, what is next.'
+  } Return text.`;
   try {
     const r = await ask<{ text: string }>(run, 'haiku', task, OUTCOME_SCHEMA, 350, 12000);
     return r.text;
@@ -249,6 +281,24 @@ export async function genRecap(run: Run): Promise<string> {
 }
 
 // ---------- Events ----------
+
+interface RawEvent {
+  title: string;
+  lines: Line[];
+  summary: string;
+  npc: { name: string; role: string; description: string };
+  choices: AiEventDraft['choices'];
+}
+
+function toEvent(run: Run, d: RawEvent, type: string): AiEventDraft {
+  const lines = cleanLines(d.lines);
+  if (!d.choices?.length || !lines.length) throw new Error('incomplete event');
+  return { title: d.title, summary: d.summary, choices: d.choices, lines, text: linesToText(lines), type, region: run.regions[run.act - 1], npc: d.npc?.name ? d.npc : undefined };
+}
+
+export function withLines(d: AiEventDraft): AiEventDraft {
+  return d.lines ? d : { ...d, lines: textToLines(d.text) };
+}
 
 export async function genEvent(run: Run, type: EventType): Promise<AiEventDraft> {
   const t = EVENT_TYPES[type];
@@ -269,30 +319,30 @@ TASK: Write a ${t.name.toUpperCase()} event (${t.desc}) for this point of the ro
 - If it fits, use a recurring NPC from the story bible or someone already met; or introduce a new named character (fill npc; otherwise npc fields are empty strings).
 ${type === 'villain' ? '- This is a villain encounter: the villain or this act\'s lieutenant shows their hand (a vision, a messenger, a ruined village, a taunt). Advance the main plot.\n' : ''}${type === 'moral' ? '- A real dilemma with no clean answer. At least one choice uses stat "none" (no roll). Choices will be remembered and can pay off later.\n' : ''}- Success will be rewarded with ${rewardText[reward] ?? 'a reward'}; failure ${t.penalty === 'damage' ? 'hurts the hero who acts' : t.penalty === 'gold' ? 'costs gold' : 'has no direct cost'}. Make the scene's stakes match.
 - 2 to 4 choices. Each: a short label (an action, max 8 words), the stat it tests (might = force, agility = speed/stealth/traps, mind = knowledge/puzzles, spirit = will/faith/persuasion, none = no roll), and a difficulty (easy, normal, hard, veryhard) that fits how risky it sounds.
-- text: 70 to 130 words, ending with the situation the heroes must act on.
-Return title, text, summary (one sentence), npc, choices.`;
+- lines: 70 to 130 words in total, ending with the situation the heroes must act on.
+Return title, lines, summary (one sentence), npc, choices.`;
   try {
-    const d = await ask<Omit<AiEventDraft, 'type' | 'region'>>(run, type === 'villain' ? 'sonnet' : 'haiku', task, EVENT_SCHEMA, 900, type === 'villain' ? 30000 : 18000);
-    if (!d.choices?.length) throw new Error('no choices');
-    return { ...d, type, region: run.regions[run.act - 1], npc: d.npc?.name ? d.npc : undefined };
+    const d = await ask<RawEvent>(run, type === 'villain' ? 'sonnet' : 'haiku', task, EVENT_SCHEMA, 1000, type === 'villain' ? 30000 : 18000);
+    return toEvent(run, d, type);
   } catch {
-    return offlineEvent(run, type);
+    return withLines(offlineEvent(run, type));
   }
 }
 
-export async function genOutcome(run: Run): Promise<string> {
+export async function genOutcome(run: Run): Promise<{ text: string; lines: Line[] } | null> {
   const ev = run.event;
-  if (!ev?.outcomeFacts) return '';
+  if (!ev?.outcomeFacts) return null;
   const task = `${JSON.stringify(context(run))}
 
 The event so far: "${ev.title}". ${ev.text}
 OUTCOME DECIDED BY THE GAME (narrate exactly this, do not change it): ${ev.outcomeFacts}
-TASK: Narrate what happens, 50 to 100 words. Mention the concrete gains or losses naturally. If it was a moral choice, show its immediate consequence and hint it may matter later. Return text.`;
+TASK: Narrate what happens, 50 to 100 words. Mention the concrete gains or losses naturally. If it was a moral choice, show its immediate consequence and hint it may matter later. Return lines.`;
   try {
-    const r = await ask<{ text: string }>(run, ev.type === 'villain' ? 'sonnet' : 'haiku', task, OUTCOME_SCHEMA, 450, 15000);
-    return r.text;
+    const r = await ask<{ lines: Line[] }>(run, ev.type === 'villain' ? 'sonnet' : 'haiku', task, OUTCOME_LINES_SCHEMA, 500, 15000);
+    const lines = cleanLines(r.lines);
+    return lines.length ? { lines, text: linesToText(lines) } : null;
   } catch {
-    return '';
+    return null;
   }
 }
 
@@ -332,7 +382,7 @@ export async function prefetch(run: Run, onUpdate: () => void) {
       if (s.buffer[key]) continue;
       try {
         const boss = node.type === 'boss';
-        s.buffer[key] = await ask<SceneText>(run, boss ? 'sonnet' : 'haiku', nodeTask(run, node), SCENE_SCHEMA, boss ? 700 : 450, boss ? 30000 : 15000);
+        s.buffer[key] = await askScene(run, boss ? 'sonnet' : 'haiku', nodeTask(run, node), boss ? 800 : 550, boss ? 30000 : 15000);
         onUpdate();
       } catch {
         break;
@@ -344,15 +394,15 @@ export async function prefetch(run: Run, onUpdate: () => void) {
     while (s.eventBuffer.filter((e) => e.region === reg).length < 2 && aiReady()) {
       const type = types[s.eventBuffer.length % types.length];
       try {
-        const d = await ask<Omit<AiEventDraft, 'type' | 'region'>>(
+        const d = await ask<RawEvent>(
           run,
           'haiku',
-          `${JSON.stringify(context(run))}\n\nTASK: Write a ${EVENT_TYPES[type].name.toUpperCase()} event (${EVENT_TYPES[type].desc}) that could happen anywhere in this region in the next hour of play. It must not depend on a specific previous scene. 2 to 4 choices with stat (might, agility, mind, spirit, none) and difficulty. text 70 to 130 words. npc fields empty strings if none.`,
+          `${JSON.stringify(context(run))}\n\nTASK: Write a ${EVENT_TYPES[type].name.toUpperCase()} event (${EVENT_TYPES[type].desc}) that could happen anywhere in this region in the next hour of play. It must not depend on a specific previous scene. 2 to 4 choices with stat (might, agility, mind, spirit, none) and difficulty. lines 70 to 130 words in total. npc fields empty strings if none.`,
           EVENT_SCHEMA,
-          900,
+          1000,
           18000,
         );
-        s.eventBuffer.push({ ...d, type, region: reg, npc: d.npc?.name ? d.npc : undefined });
+        s.eventBuffer.push(toEvent(run, d, type));
         onUpdate();
       } catch {
         break;

@@ -15,6 +15,7 @@ export interface Game {
   openMenu: () => void;
   openJournal: () => void;
   openSettings: () => void;
+  screenOff: () => void;
 }
 
 export const GameCtx = createContext<Game | null>(null);

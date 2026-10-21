@@ -36,7 +36,7 @@ export function Menu({ onClose }: { onClose: () => void }) {
         </div>
         <div class="card small col" style={{ gap: '4px' }}>
           <strong>Coming in later phases</strong>
-          <span class="muted">Map (3) · Voice narration and car mode (5) · Content, companions and unlocks (6)</span>
+          <span class="muted">Map (3) · Content, companions and unlocks (6)</span>
         </div>
         <div class="row spread">
           <span class="tiny dim">Run seed {run.seed}</span>

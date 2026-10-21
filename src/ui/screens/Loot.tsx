@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
 import { genOutro } from '../../ai/gm';
 import { addJournal } from '../../engine/story';
+import { useSay } from '../useVoice';
+import { lootSegments } from '../../audio/narrate';
 import { useGame } from '../store';
 import { CompareModal } from '../components/Compare';
 import { TopBar } from '../components/TopBar';
@@ -31,6 +33,9 @@ export function Loot() {
       alive = false;
     };
   }, [run.pendingOutro]);
+  // Spoken once the aftermath line is ready (or straight away when there is none).
+  const outroReady = !run.pendingOutro || !!run.pendingOutro.text;
+  useSay(outroReady ? `loot:${run.seed}:${run.distance}:${run.act}` : null, () => lootSegments(run, run.pendingOutro?.text));
   const leftover = run.pendingLoot.reduce((s, i) => s + salvageValue(i), 0);
   const nothing = !run.pendingLoot.length && !run.pendingConsumables.length;
 

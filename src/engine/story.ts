@@ -1,4 +1,4 @@
-import type { AiEventDraft, JournalEntry, JournalKind, PathNode, Run, StoryBible, StoryState } from './types';
+import type { AiEventDraft, JournalEntry, JournalKind, Line, PathNode, Run, StoryBible, StoryState } from './types';
 import { Rng } from './rng';
 import { REGIONS } from './data/enemies';
 import { EVENTS } from './data/events';
@@ -163,4 +163,22 @@ export function offlineEvent(run: Run, type: string): AiEventDraft {
 
 export function nodeKey(run: Run, node: PathNode, index: number): string {
   return `${run.act}:${run.distance}:${index}:${node.type}`;
+}
+
+// ---------- Lines (speaker-tagged narration) ----------
+
+/** Display / journal text from tagged lines: narration as paragraphs, dialogue as `Name: "..."`. */
+export function linesToText(lines: Line[]): string {
+  return lines
+    .map((l) => (l.speaker ? `${l.speaker}: "${l.text.replace(/^["“]|["”]$/g, '')}"` : l.text))
+    .join('\n\n');
+}
+
+/** Plain text (offline templates) as narrator lines, one per paragraph. */
+export function textToLines(text: string): Line[] {
+  return text
+    .split(/\n+/)
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t) => ({ speaker: '', text: t }));
 }

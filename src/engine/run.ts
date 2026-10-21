@@ -7,6 +7,7 @@ import type {
   AiEventDraft,
   Difficulty,
   EventState,
+  Line,
   SceneState,
   Hero,
   HeroId,
@@ -139,11 +140,12 @@ export function openScene(run: Run, scene: SceneState) {
 }
 
 /** Fills the current scene with narration (from the AI, the buffer or a template). */
-export function setSceneText(run: Run, title: string, text: string, summary?: string) {
+export function setSceneText(run: Run, title: string, text: string, summary?: string, lines?: Line[]) {
   if (!run.scene) return;
   run.scene.title = title;
   run.scene.text = text;
   run.scene.summary = summary;
+  run.scene.lines = lines;
   run.scene.status = 'ready';
 }
 
@@ -218,7 +220,7 @@ export function chooseNode(run: Run, index: number) {
     const key = nodeKey(run, node, index);
     const buffered = story(run).buffer[key];
     openScene(run, { kind: node.type === 'boss' ? 'bossIntro' : 'node', status: 'pending', title: '', text: '', next: 'enterNode', key });
-    if (buffered) setSceneText(run, buffered.title, buffered.text, buffered.summary);
+    if (buffered) setSceneText(run, buffered.title, buffered.text, buffered.summary, buffered.lines);
     return;
   }
   enterNode(run);
@@ -908,6 +910,7 @@ function makeEvent(run: Run): EventState {
 export function applyEventDraft(run: Run, ev: EventState, d: AiEventDraft) {
   ev.title = d.title;
   ev.text = d.text;
+  ev.lines = d.lines;
   ev.summary = d.summary;
   ev.npc = d.npc?.name ? d.npc : undefined;
   ev.options = d.choices.slice(0, 4).map((c) => ({ stat: c.stat, label: c.label, difficulty: c.difficulty, dc: dcFor(run, c.difficulty) }));
@@ -1045,9 +1048,10 @@ export function eventAccept(run: Run) {
 }
 
 /** Replaces the plain outcome text with the GM's narration. */
-export function setEventNarration(run: Run, text: string) {
+export function setEventNarration(run: Run, text: string, lines?: Line[]) {
   if (!run.event?.outcomeText) return;
   run.event.outcomeText = text;
+  run.event.outcomeLines = lines;
   run.event.outcomeNarrated = true;
 }
 

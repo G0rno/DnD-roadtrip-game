@@ -7,11 +7,14 @@ import { ItemCard, ConsumableCard } from '../components/ItemView';
 import { bagFree, buyPrice, leaveShop, shopBuy, shopReroll, shopRerollCost, shopSell } from '../../engine/run';
 import { sellValue } from '../../engine/items';
 import { CONSUMABLES } from '../../engine/data/items';
+import { useSay } from '../useVoice';
+import { shopSegments } from '../../audio/narrate';
 
 export function Shop() {
   const { run, act, openInventory } = useGame();
   const shop = run.shop!;
   const [comparing, setComparing] = useState<Item | null>(null);
+  useSay(`shop:${run.seed}:${run.distance}`, shopSegments);
   return (
     <>
       <TopBar title="Shop" />

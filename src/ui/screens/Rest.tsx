@@ -7,6 +7,8 @@ import { HeroSummary } from '../components/bits';
 import { ItemCard } from '../components/ItemView';
 import { chooseForge, forgeReroll, forgeUpgrade, leaveRest, restHeal } from '../../engine/run';
 import { canUpgrade, describeAffix, forgeRerollCost, forgeUpgradeCost } from '../../engine/items';
+import { useSay } from '../useVoice';
+import { restSegments } from '../../audio/narrate';
 
 type Ref = { heroId: HeroId; slot: EquipSlot } | { bagIndex: number };
 
@@ -14,6 +16,7 @@ export function Rest() {
   const { run, act } = useGame();
   const [sel, setSel] = useState<{ ref: Ref; item: Item } | null>(null);
   const mode = run.restMode;
+  useSay(`rest:${run.seed}:${run.distance}`, restSegments);
 
   const items: { ref: Ref; item: Item; owner: string }[] = [];
   for (const h of run.heroes) for (const s of EQUIP_SLOTS) if (h.equipment[s]) items.push({ ref: { heroId: h.id, slot: s }, item: h.equipment[s]!, owner: h.name });

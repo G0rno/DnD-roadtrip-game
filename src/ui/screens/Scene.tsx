@@ -5,7 +5,12 @@ import { Backdrop } from '../components/Backdrop';
 import { Sprite } from '../components/Sprite';
 import { defaultLook } from '../sprites';
 import { continueScene, setSceneText } from '../../engine/run';
-import { offlineActIntro, offlineBible, offlineEnding, offlineNodeScene, story } from '../../engine/story';
+import { offlineActIntro, offlineBible, offlineEnding, offlineNodeScene, story, textToLines } from '../../engine/story';
+import { StoryLines } from '../components/StoryLines';
+import { AudioBar } from '../components/AudioBar';
+import { useSay } from '../useVoice';
+import { sceneSegments } from '../../audio/narrate';
+import { voice } from '../../audio/voice';
 import { aiReady, genActIntro, genBible, genEnding, genNodeScene, lastAiError } from '../../ai/gm';
 
 const inFlight = new Set<string>();
@@ -16,10 +21,11 @@ function sceneId(run: Run) {
 
 function offlineText(run: Run) {
   const sc = run.scene!;
-  if (sc.kind === 'node' || sc.kind === 'bossIntro') return offlineNodeScene(run, run.currentNode ?? { type: 'fight' });
-  if (sc.kind === 'ending') return { title: 'The End of the Road', text: offlineEnding(run), summary: 'The villain fell.' };
-  const o = offlineActIntro(run);
-  return { ...o, summary: o.text.split('.')[0] };
+  let o: { title: string; text: string; summary?: string };
+  if (sc.kind === 'node' || sc.kind === 'bossIntro') o = offlineNodeScene(run, run.currentNode ?? { type: 'fight' });
+  else if (sc.kind === 'ending') o = { title: 'The End of the Road', text: offlineEnding(run), summary: 'The villain fell.' };
+  else o = offlineActIntro(run);
+  return { ...o, summary: o.summary ?? o.text.split('.')[0], lines: textToLines(o.text) };
 }
 
 export function Scene() {
@@ -40,7 +46,7 @@ export function Scene() {
         if (!aiReady()) {
           if (sc.kind === 'runStart' && !story(run).bible) act((r) => (story(r).bible = offlineBible(r)));
           const o = offlineText(run);
-          act((r) => setSceneText(r, o.title, o.text, o.summary));
+          act((r) => setSceneText(r, o.title, o.text, o.summary, o.lines));
           return;
         }
         if (sc.kind === 'runStart' && !story(run).bible) {
@@ -52,7 +58,7 @@ export function Scene() {
         setPhase(sc.kind === 'runStart' ? 'Writing the opening...' : 'The Game Master is writing...');
         const t = sc.kind === 'node' || sc.kind === 'bossIntro' ? await genNodeScene(run, run.currentNode ?? { type: 'fight' }) : sc.kind === 'ending' ? await genEnding(run) : await genActIntro(run);
         act((r) => {
-          if (r.scene && r.scene.status !== 'ready') setSceneText(r, t.title, t.text, t.summary);
+          if (r.scene && r.scene.status !== 'ready') setSceneText(r, t.title, t.text, t.summary, t.lines);
         });
       } finally {
         clearTimeout(slowTimer);
@@ -64,8 +70,10 @@ export function Scene() {
   const skip = () => {
     if (sc.kind === 'runStart' && !story(run).bible) act((r) => (story(r).bible = offlineBible(r)));
     const o = offlineText(run);
-    act((r) => setSceneText(r, o.title, o.text, o.summary));
+    act((r) => setSceneText(r, o.title, o.text, o.summary, o.lines));
   };
+
+  useSay(sc.status === 'ready' ? `scene:${run.seed}:${run.distance}:${run.act}:${sc.kind}:${sc.title}` : null, () => sceneSegments(run));
 
   const region = run.regions[Math.min(run.act, 4) - 1];
   const kindLabel = { runStart: 'A new saga', actIntro: `Act ${run.act}`, node: 'On the road', bossIntro: 'Act boss', ending: 'Epilogue' }[sc.kind];
@@ -83,6 +91,9 @@ export function Scene() {
           ))}
         </div>
         <div class="scene-banner">{kindLabel}</div>
+        <div style={{ position: 'absolute', top: '10px', right: '12px', zIndex: 300 }}>
+          <AudioBar />
+        </div>
       </div>
       <div class="col grow" style={{ padding: '18px 28px', minHeight: 0 }}>
         {sc.status !== 'ready' ? (
@@ -100,9 +111,17 @@ export function Scene() {
         ) : (
           <>
             <h2>{sc.title}</h2>
-            <div class="grow scroll storytext">{sc.text}</div>
+            <div class="grow scroll">
+              <StoryLines lines={sc.lines} text={sc.text} />
+            </div>
             <div class="row" style={{ justifyContent: 'flex-end' }}>
-              <button class="primary big" onClick={() => act(continueScene)}>
+              <button
+                class="primary big"
+                onClick={() => {
+                  voice.stop();
+                  act(continueScene);
+                }}
+              >
                 {sc.next === 'enterNode' ? 'Continue →' : sc.next === 'victory' ? 'Finish' : 'Onward →'}
               </button>
             </div>

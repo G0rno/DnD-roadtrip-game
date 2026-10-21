@@ -5,6 +5,8 @@ import { HeroSummary } from '../components/bits';
 import { ItemCard } from '../components/ItemView';
 import { canRevive, revive, reviveCosts, reviveFree, reviveItemOptions, skipRevive } from '../../engine/run';
 import { RARITY_INFO } from '../../engine/data/items';
+import { useSay } from '../useVoice';
+import { reviveSegments } from '../../audio/narrate';
 
 export function Revive() {
   const { run, act } = useGame();
@@ -13,6 +15,7 @@ export function Revive() {
   const c = reviveCosts(run, fallen.id);
   const [pickItem, setPickItem] = useState(false);
   const items = reviveItemOptions(run, fallen.id);
+  useSay(`revive:${run.seed}:${run.distance}:${fallen.id}`, () => reviveSegments(run));
 
   return (
     <>

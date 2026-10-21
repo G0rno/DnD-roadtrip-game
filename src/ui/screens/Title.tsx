@@ -102,7 +102,7 @@ export function Title({ onOpen, settings, setSettings, toast, openSettings }: Pr
           🌙 Night mode {settings.nightMode ? 'on' : 'off'}
         </button>
       </div>
-      <div class="tiny dim">Saves stay on this iPad. Export a backup to the Files app now and then. · v0.4 (Phase 4: AI Game Master)</div>
+      <div class="tiny dim">Saves stay on this iPad. Export a backup to the Files app now and then. · v0.5 (Phase 5: voice narration)</div>
 
       {confirmDelete !== null && (
         <Modal title={`Delete slot ${confirmDelete}?`} onClose={() => setConfirmDelete(null)}>

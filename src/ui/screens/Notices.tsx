@@ -2,9 +2,12 @@ import { useGame } from '../store';
 import { HeroSummary } from '../components/bits';
 import { CURSES } from '../../engine/data/statuses';
 import { dismissNotice, score } from '../../engine/run';
+import { useSay } from '../useVoice';
+import { endSegments, wipeSegments } from '../../audio/narrate';
 
 export function Wipe() {
   const { run, act } = useGame();
+  useSay(`wipe:${run.seed}:${run.stats.wipes}`, () => wipeSegments(run));
   return (
     <div class="screen" style={{ justifyContent: 'center', alignItems: 'center' }}>
       <div style={{ fontSize: '3.5rem' }}>💀</div>
@@ -35,6 +38,7 @@ export function Wipe() {
 
 export function End() {
   const { run, quit } = useGame();
+  useSay(`end:${run.seed}`, () => endSegments(run));
   const win = run.screen === 'victory';
   return (
     <div class="screen" style={{ justifyContent: 'center', alignItems: 'center' }}>

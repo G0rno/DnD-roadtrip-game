@@ -298,6 +298,8 @@ export interface EventState {
   /** Plain facts of what the code decided, for the GM to narrate. */
   outcomeFacts?: string;
   outcomeNarrated?: boolean;
+  lines?: Line[];
+  outcomeLines?: Line[];
 }
 
 // ---------- Run ----------
@@ -391,6 +393,12 @@ export interface Run {
 
 // ---------- Story (AI Game Master) ----------
 
+/** One line of narration or dialogue. speaker '' = the narrator. */
+export interface Line {
+  speaker: string;
+  text: string;
+}
+
 export interface StoryBible {
   title: string;
   setting: string;
@@ -429,7 +437,7 @@ export interface StoryState {
   /** Villain encounters per act (index = act). */
   villainBeats: number[];
   /** Pre-written node scenes keyed by node signature. */
-  buffer: Record<string, { title: string; text: string; summary: string }>;
+  buffer: Record<string, { title: string; text: string; summary: string; lines?: Line[] }>;
   /** Pre-written events for the current region. */
   eventBuffer: AiEventDraft[];
   cost: CostTotals;
@@ -452,6 +460,7 @@ export interface AiEventDraft {
   summary: string;
   npc?: { name: string; role: string; description: string };
   choices: { label: string; stat: Stat | 'none'; difficulty: Difficulty }[];
+  lines?: Line[];
 }
 
 export type SceneKind = 'runStart' | 'actIntro' | 'node' | 'bossIntro' | 'ending';
@@ -465,4 +474,5 @@ export interface SceneState {
   /** Buffer key for node scenes. */
   key?: string;
   summary?: string;
+  lines?: Line[];
 }

@@ -21,6 +21,8 @@ import { SettingsModal } from './screens/Settings';
 import { Modal } from './components/bits';
 import { genRecap } from '../ai/gm';
 import { story } from '../engine/story';
+import { voice } from '../audio/voice';
+import { setKeepAwake } from '../audio/wake';
 
 export function App() {
   const [run, setRun] = useState<Run | null>(null);
@@ -33,13 +35,28 @@ export function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [recap, setRecap] = useState<string | null>(null);
   const [warned, setWarned] = useState(false);
+  const [dark, setDark] = useState(false);
+
+  // Keep the speech engine and screen wake lock in sync with settings.
+  useEffect(() => {
+    voice.enabled = settings.voiceOn;
+    voice.settings = { lang: settings.narrationLang, rate: settings.voiceRate, narratorVoice: settings.narratorVoice, npcVoices: settings.npcVoices };
+    setKeepAwake(settings.keepAwake);
+  }, [settings]);
+
+  // Read the recap aloud once it's written.
+  useEffect(() => {
+    if (recap && recap !== '...') voice.speak([{ text: recap, role: 'narrator' }], { interrupt: true });
+  }, [recap]);
 
   const openRun = (r: Run, resumed: boolean) => {
     setRun(r);
     setWarned(false);
     if (resumed && r.narrate && r.story?.journal.length) {
       setRecap('...');
-      genRecap(r).then((t) => setRecap(t || null));
+      // After 2 hours or more away, a longer "previously on..." recap.
+      const long = Date.now() - (r.updatedAt ?? 0) > 2 * 3600 * 1000;
+      genRecap(r, long).then((t) => setRecap(t || null));
     }
   };
 
@@ -77,6 +94,7 @@ export function App() {
         setVersion((v) => v + 1);
       },
       quit: () => {
+        voice.stop();
         saveRun(run);
         setRun(null);
         setShowInventory(false);
@@ -92,6 +110,7 @@ export function App() {
       openMenu: () => setShowMenu(true),
       openJournal: () => setShowJournal(true),
       openSettings: () => setShowSettings(true),
+      screenOff: () => setDark(true),
     };
   }, [run, settings, warned]);
 
@@ -129,7 +148,13 @@ export function App() {
             <Modal title="Previously..." onClose={() => setRecap(null)}>
               <div class="storytext">{recap === '...' ? 'The Game Master is remembering...' : recap}</div>
               {run && story(run).bible && <div class="tiny dim">{story(run).bible!.title}</div>}
-              <button class="primary" onClick={() => setRecap(null)}>
+              <button
+                class="primary"
+                onClick={() => {
+                  voice.stop();
+                  setRecap(null);
+                }}
+              >
                 Back on the road
               </button>
             </Modal>
@@ -150,6 +175,11 @@ export function App() {
         />
       )}
       {toastMsg && <div class="toast">{toastMsg}</div>}
+      {dark && (
+        <div class="screenoff" onClick={() => setDark(false)}>
+          Screen off · narration keeps playing · tap to wake
+        </div>
+      )}
       <div class="rotate">Turn the iPad sideways to play.</div>
     </div>
   );

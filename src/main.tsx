@@ -4,6 +4,9 @@ import '@fontsource/alegreya-sans/400.css';
 import '@fontsource/alegreya-sans/700.css';
 import './ui/styles.css';
 import { App } from './ui/App';
+import { voice } from './audio/voice';
+
+voice.init();
 
 render(<App />, document.getElementById('app')!);
 

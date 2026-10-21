@@ -312,3 +312,44 @@ describe('story flow (narrated runs, offline fallbacks)', () => {
     expect(tierFor(5, 30, [10, 10])).toBe('great');
   });
 });
+
+import { chunkText } from '../src/audio/voice';
+import { linesSegments, roundSegments, hubSegments } from '../src/audio/narrate';
+
+describe('narration', () => {
+  it('splits long text into sentence chunks under ~220 chars', () => {
+    const text = 'One sentence here. '.repeat(30);
+    const chunks = chunkText(text);
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const c of chunks) expect(c.length).toBeLessThanOrEqual(240);
+    expect(chunks.join(' ').replace(/\s+/g, ' ')).toBe(text.trim().replace(/\s+/g, ' '));
+  });
+
+  it('gives the villain and lieutenants the villain voice, others NPC voices', () => {
+    const run = newRun(1, 7, true);
+    finishCreation(run, [
+      { name: 'Ana', race: 'human', cls: 'fighter', background: 'soldier' },
+      { name: 'Bo', race: 'elf', cls: 'rogue', background: 'criminal' },
+    ]);
+    story(run).bible = offlineBible(run);
+    const v = story(run).bible!.villain.name;
+    const lt = story(run).bible!.lieutenants[0].name;
+    const segs = linesSegments(run, [
+      { speaker: '', text: 'Rain.' },
+      { speaker: v, text: 'Kneel.' },
+      { speaker: lt, text: 'You heard my master.' },
+      { speaker: 'Odile', text: 'Run!' },
+    ], '');
+    expect(segs.map((s) => s.role)).toEqual(['narrator', 'villain', 'villain', 'npc']);
+  });
+
+  it('round summaries mention HP, intents and end with a prompt', () => {
+    const run = setupRun();
+    startCombat(run, 'normal', run.regions[0]);
+    const text = roundSegments(run)[0].text;
+    expect(text).toContain('Round 1');
+    expect(text).toContain('Ana');
+    expect(text).toContain('Your move');
+    expect(hubSegments(run, true)[0].text).toContain('Good place to stop');
+  });
+});

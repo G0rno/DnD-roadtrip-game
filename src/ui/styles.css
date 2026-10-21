@@ -1174,3 +1174,38 @@ textarea {
   padding: 8px 12px;
   border-radius: 6px;
 }
+.storytext p {
+  margin: 0 0 0.7em;
+}
+.storytext p.dialogue {
+  padding-left: 12px;
+  border-left: 2px solid #6c5524;
+}
+.storytext .speaker {
+  display: block;
+  font-family: var(--font-title);
+  font-size: 0.78rem;
+  color: var(--gold);
+  letter-spacing: 0.06em;
+}
+
+/* ---------- Audio / car mode ---------- */
+.audiobar {
+  display: inline-flex;
+  gap: 4px;
+}
+.audiobar button {
+  min-width: 42px;
+  padding: 4px 8px;
+}
+.screenoff {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 1000;
+  display: grid;
+  place-items: end center;
+  padding-bottom: 30px;
+  color: #222;
+  font-size: 0.9rem;
+}

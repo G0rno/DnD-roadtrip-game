@@ -9,6 +9,7 @@ It's a web app (PWA): open it in Safari, add it to the home screen, and it works
 **Phases 2 and 4 done: core engine, battle scene, and the AI Game Master.**
 
 - AI Game Master (Claude API, key entered in Settings, stored only on the device): a story bible per run (villain, four lieutenants who are the act bosses, recurring characters), a scene before every step, AI-written events with a "Something else" free-text option, narrated outcomes, act intros, boss confrontations, an ending, a Journal and a "Previously..." recap. Haiku for routine scenes, Sonnet for key moments; cost shown in Settings, budget mode available. Without signal it uses pre-written scenes, then templates.
+- Voice narration (Phase 5): the iPad's built-in voices (free, offline). One narrator, character voices for NPCs, a deeper voice for the villain and lieutenants (the AI tags each line with its speaker). The driver hears everything needed to play: scenes, choices with odds, rolls and results, each combat action, round summaries (brief or detailed), loot, path choices and stopping points. Pause, skip, repeat, speed, English or French, keep-awake and a screen-off mode.
 - Battle scene: region backdrops, pixel sprites (0x72 DungeonTileset II, CC0), enemy turns played one action at a time, item comparison.
 
 - Character creation (guided, 5 steps per player, randomize per step or whole character)
@@ -19,7 +20,7 @@ It's a web app (PWA): open it in Safari, add it to the home screen, and it works
 - Autosave after every action, 3 run slots, backup export/import (Files app), offline play
 - A temporary path picker stands in for the Phase 3 map
 
-Coming next: the map (3), voice narration and car mode (5), content, companions and unlocks (6), playtesting (7).
+Coming next: the map (3), content, companions and unlocks (6), playtesting (7).
 
 ## Run it locally
 

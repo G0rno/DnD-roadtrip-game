@@ -39,6 +39,14 @@ export interface Settings {
   budgetMode: boolean;
   /** Warn when this run's AI cost passes this many dollars. */
   budgetWarnUsd: number;
+  /** Voice narration (iPad built-in voices). */
+  voiceOn: boolean;
+  voiceRate: number;
+  /** voiceURI of the narrator voice; '' = best available. */
+  narratorVoice: string;
+  npcVoices: boolean;
+  verbosity: 'brief' | 'detailed';
+  keepAwake: boolean;
 }
 
 export interface SlotSummary {
@@ -160,7 +168,7 @@ export function recordRunEnd(run: Run, outcome: 'victory' | 'wipe') {
 }
 
 export function loadSettings(): Settings {
-  const base: Settings = { nightMode: false, confirmEndTurn: false, fastCombat: false, narrationLang: 'en', budgetMode: false, budgetWarnUsd: 5 };
+  const base: Settings = { nightMode: false, confirmEndTurn: false, fastCombat: false, narrationLang: 'en', budgetMode: false, budgetWarnUsd: 5, voiceOn: true, voiceRate: 1, narratorVoice: '', npcVoices: true, verbosity: 'brief', keepAwake: true };
   try {
     return { ...base, ...JSON.parse(storage()?.getItem(SETTINGS_KEY) ?? '{}') };
   } catch {

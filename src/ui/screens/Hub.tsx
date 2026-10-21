@@ -7,6 +7,8 @@ import { HeroSummary, NODE_INFO } from '../components/bits';
 import { chooseNode, dismissNotice, NODES_PER_ACT } from '../../engine/run';
 import { initiativeOdds } from '../../engine/combat';
 import { REGIONS } from '../../engine/data/enemies';
+import { useSay } from '../useVoice';
+import { hubSegments } from '../../audio/narrate';
 
 export function Hub() {
   const { run, act, openInventory } = useGame();
@@ -17,6 +19,7 @@ export function Hub() {
     const t = setTimeout(() => prefetch(run, () => act(() => {})), 400);
     return () => clearTimeout(t);
   }, [run.distance, run.act]);
+  useSay(`hub:${run.seed}:${run.distance}:${run.act}:${run.choices.length}`, () => hubSegments(run, run.distance > 0));
   const buffered = run.narrate ? Object.keys(story(run).buffer).length + story(run).eventBuffer.length : 0;
 
   return (

@@ -6,7 +6,10 @@ import { STAT_LABEL, pct, CLASS_ICON } from '../components/bits';
 import { checkOdds, DIFFICULTY_LABEL } from '../../engine/checks';
 import { addFreeTextOption, eventAccept, eventDone, eventReroll, eventRoll, setEventDraft, setEventNarration } from '../../engine/run';
 import { offlineEvent, EVENT_TYPES, type EventType } from '../../engine/story';
-import { aiReady, genEvent, genOutcome, mapFreeText } from '../../ai/gm';
+import { aiReady, genEvent, genOutcome, mapFreeText, withLines } from '../../ai/gm';
+import { StoryLines } from '../components/StoryLines';
+import { useSay } from '../useVoice';
+import { eventIntroSegments, eventOutcomeSegments, eventRollSegments, newChoiceSegment } from '../../audio/narrate';
 
 const TIER_TEXT = { great: 'Great success!', success: 'Success', partial: 'Partial success', failure: 'Failure', bad: 'Bad failure' };
 const inFlight = new Set<string>();
@@ -32,7 +35,7 @@ export function EventScreen() {
     inFlight.add(id);
     (async () => {
       const type = (ev.type ?? 'social') as EventType;
-      const d = aiReady() ? await genEvent(run, type) : offlineEvent(run, type);
+      const d = aiReady() ? await genEvent(run, type) : withLines(offlineEvent(run, type));
       act((r) => setEventDraft(r, d));
       inFlight.delete(id);
     })();
@@ -45,8 +48,8 @@ export function EventScreen() {
     if (inFlight.has(id)) return;
     inFlight.add(id);
     (async () => {
-      const text = await genOutcome(run);
-      if (text) act((r) => setEventNarration(r, text));
+      const o = await genOutcome(run);
+      if (o) act((r) => setEventNarration(r, o.text, o.lines));
       else act((r) => r.event && (r.event.outcomeNarrated = true));
       inFlight.delete(id);
     })();
@@ -84,6 +87,15 @@ export function EventScreen() {
     setThinking(false);
   };
 
+  // Spoken: the scene and choices with odds, a new free-text choice, the roll, then the outcome.
+  const base = `ev:${run.seed}:${run.distance}:${ev.title}`;
+  useSay(ev.status !== 'pending' && !ev.result ? `${base}:intro` : null, () => eventIntroSegments(run));
+  const lastOpt = ev.options[ev.options.length - 1];
+  useSay(lastOpt?.freeText && !ev.result ? `${base}:opt:${lastOpt.label}` : null, () => newChoiceSegment(lastOpt.label));
+  useSay(ev.result && !ev.result.noRoll && !rolling ? `${base}:roll:${ev.result.total}:${ev.result.rerolled}` : null, () => eventRollSegments(run));
+  const outcomeFinal = !!ev.outcomeText && (ev.outcomeNarrated || !run.narrate || !aiReady());
+  useSay(outcomeFinal ? `${base}:out` : null, () => eventOutcomeSegments(run), false);
+
   const res = ev.result;
   const hero = res && run.heroes.find((h) => h.id === res.heroId)!;
   const typeName = ev.type ? EVENT_TYPES[ev.type as EventType]?.name : undefined;
@@ -97,7 +109,7 @@ export function EventScreen() {
             <div class="die rolling">✒️</div>
           </div>
           <div class="muted">The Game Master is setting the scene...</div>
-          <button class="small" onClick={() => act((r) => setEventDraft(r, offlineEvent(r, (ev.type ?? 'social') as EventType)))}>
+          <button class="small" onClick={() => act((r) => setEventDraft(r, withLines(offlineEvent(r, (ev.type ?? 'social') as EventType))))}>
             Skip: use a short version
           </button>
         </div>
@@ -118,8 +130,8 @@ export function EventScreen() {
               </span>
             )}
           </div>
-          <div class="storytext" style={{ maxHeight: res ? '120px' : '230px', overflowY: 'auto' }}>
-            {ev.text}
+          <div style={{ maxHeight: res ? '120px' : '240px', overflowY: 'auto' }}>
+            <StoryLines lines={ev.lines} text={ev.text} />
           </div>
         </div>
 
@@ -196,8 +208,8 @@ export function EventScreen() {
                 )}
                 {!res.noRoll && <div class="banner">{TIER_TEXT[res.tier]}</div>}
                 {ev.outcomeText && (
-                  <div class="panel storytext scroll" style={{ maxWidth: '860px', maxHeight: '220px' }}>
-                    {ev.outcomeText}
+                  <div class="panel scroll" style={{ maxWidth: '860px', maxHeight: '230px' }}>
+                    <StoryLines lines={ev.outcomeLines} text={ev.outcomeText} />
                     {ev.outcomeNarrated && ev.outcomeFacts && <div class="small muted" style={{ marginTop: '8px', fontStyle: 'normal' }}>📜 {ev.outcomeFacts}</div>}
                     {run.narrate && !ev.outcomeNarrated && aiReady() && <div class="tiny dim">The Game Master is narrating...</div>}
                   </div>

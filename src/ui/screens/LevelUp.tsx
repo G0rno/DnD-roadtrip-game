@@ -5,9 +5,12 @@ import { ABILITIES, TALENTS } from '../../engine/data/characters';
 import { STATS } from '../../engine/types';
 import { levelUpChoose, levelUpDone, levelUpReroll, levelUpStat } from '../../engine/run';
 import { derive } from '../../engine/character';
+import { useSay } from '../useVoice';
+import { levelSegments } from '../../audio/narrate';
 
 export function LevelUp() {
   const { run, act } = useGame();
+  useSay(`lvl:${run.seed}:${run.distance}:${run.heroes.map((h) => h.level).join('-')}`, () => levelSegments(run));
   const done = run.heroes.every((h) => h.pendingLevelUps === 0 && h.statPoints === 0);
   return (
     <>

@@ -1,4 +1,5 @@
 import { useGame } from '../store';
+import { AudioBar } from './AudioBar';
 import { regionName, NODES_PER_ACT, bagFree } from '../../engine/run';
 
 export function TopBar({ title }: { title?: string }) {
@@ -22,6 +23,7 @@ export function TopBar({ title }: { title?: string }) {
       <span class="badge" title="Shared reroll tokens">
         🎲 {run.rerollTokens}
       </span>
+      <AudioBar />
       {run.narrate && (
         <button class="small" onClick={openJournal}>
           📖 Journal

@@ -33,6 +33,9 @@ import {
 } from '../../engine/combat';
 import { afterCombatAction } from '../../engine/run';
 import { comboText } from './Create';
+import { voice } from '../../audio/voice';
+import { combatEventSegments, roundSegments } from '../../audio/narrate';
+import { useSay } from '../useVoice';
 
 type Pending = { kind: 'attack' } | { kind: 'ability'; id: string } | { kind: 'ultimate' } | null;
 
@@ -77,7 +80,9 @@ export function Combat() {
     return () => clearTimeout(t);
   }, [shownEv, c.floatSeq]);
 
-  // Advance playback one event at a time.
+  // Advance playback one event at a time. With narration on, the next action waits until
+  // the previous one has been read aloud, so the driver hears every action in order.
+  const gate = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
     if (shownEv >= evTotal) return;
     const next = (c.events ?? []).find((e) => e.seq > shownEv);
@@ -87,17 +92,30 @@ export function Combat() {
     }
     const heroEvent = isHeroId(next.actor);
     const delay = heroEvent ? 40 : fast ? 260 : 620;
-    const t = setTimeout(() => {
-      setShownEv(next.seq);
-      setLunge(next.actor);
-      if (!heroEvent && next.actor) {
-        const e = c.enemies.find((x) => x.uid === next.actor);
-        setBanner(e ? `${e.name}: ${next.label}` : next.label);
-      } else if (!next.actor) setBanner(next.label);
-      setTimeout(() => setLunge(null), 260);
-    }, delay);
-    return () => clearTimeout(t);
+    let cancelled = false;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    gate.current.then(() => {
+      if (cancelled) return;
+      t = setTimeout(() => {
+        if (cancelled) return;
+        setShownEv(next.seq);
+        setLunge(next.actor);
+        if (!heroEvent && next.actor) {
+          const e = c.enemies.find((x) => x.uid === next.actor);
+          setBanner(e ? `${e.name}: ${next.label}` : next.label);
+        } else if (!next.actor) setBanner(next.label);
+        setTimeout(() => setLunge(null), 260);
+        gate.current = voice.speak(combatEventSegments(run, next, c.floats), { interrupt: heroEvent });
+      }, delay);
+    });
+    return () => {
+      cancelled = true;
+      if (t) clearTimeout(t);
+    };
   }, [shownEv, evTotal]);
+
+  // Start of the heroes' turn: HP and what each enemy is about to do.
+  useSay(!playing && c.phase === 'players' ? `round:${run.seed}:${run.distance}:${c.round}` : null, () => roundSegments(run), false);
 
   // When playback is done and the fight is over, move on.
   useEffect(() => {
