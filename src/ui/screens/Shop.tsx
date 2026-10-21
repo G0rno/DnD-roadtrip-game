@@ -1,4 +1,7 @@
+import { useState } from 'preact/hooks';
+import type { Item } from '../../engine/types';
 import { useGame } from '../store';
+import { CompareModal } from '../components/Compare';
 import { TopBar } from '../components/TopBar';
 import { ItemCard, ConsumableCard } from '../components/ItemView';
 import { bagFree, buyPrice, leaveShop, shopBuy, shopReroll, shopRerollCost, shopSell } from '../../engine/run';
@@ -8,6 +11,7 @@ import { CONSUMABLES } from '../../engine/data/items';
 export function Shop() {
   const { run, act, openInventory } = useGame();
   const shop = run.shop!;
+  const [comparing, setComparing] = useState<Item | null>(null);
   return (
     <>
       <TopBar title="Shop" />
@@ -32,7 +36,18 @@ export function Shop() {
                     Buy for {price} gold
                   </button>
                 );
-                return 'uid' in entry ? <ItemCard item={entry}>{btn}</ItemCard> : <ConsumableCard stack={entry}>{btn}</ConsumableCard>;
+                return 'uid' in entry ? (
+                  <ItemCard item={entry}>
+                    <div class="row">
+                      {btn}
+                      <button class="small" style={{ marginTop: '6px' }} onClick={() => setComparing(entry)}>
+                        ⚖️ Compare
+                      </button>
+                    </div>
+                  </ItemCard>
+                ) : (
+                  <ConsumableCard stack={entry}>{btn}</ConsumableCard>
+                );
               })}
             </div>
           </div>
@@ -58,6 +73,7 @@ export function Shop() {
           </button>
         </div>
       </div>
+      {comparing && <CompareModal item={comparing} heroes={run.heroes} onClose={() => setComparing(null)} />}
     </>
   );
 }

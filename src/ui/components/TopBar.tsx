@@ -2,7 +2,7 @@ import { useGame } from '../store';
 import { regionName, NODES_PER_ACT, bagFree } from '../../engine/run';
 
 export function TopBar({ title }: { title?: string }) {
-  const { run, openInventory, openMenu } = useGame();
+  const { run, openInventory, openMenu, openJournal } = useGame();
   return (
     <div class="topbar">
       <span class="title">
@@ -22,6 +22,11 @@ export function TopBar({ title }: { title?: string }) {
       <span class="badge" title="Shared reroll tokens">
         🎲 {run.rerollTokens}
       </span>
+      {run.narrate && (
+        <button class="small" onClick={openJournal}>
+          📖 Journal
+        </button>
+      )}
       <button class="small" onClick={openInventory}>
         🎒 Bag {run.bag.length - bagFree(run)}/{run.bag.length}
       </button>

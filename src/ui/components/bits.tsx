@@ -3,6 +3,8 @@ import type { Hero, StatusInstance } from '../../engine/types';
 import { STATUSES, CURSES } from '../../engine/data/statuses';
 import { CLASSES, RACES, xpToNext } from '../../engine/data/characters';
 import { derive } from '../../engine/character';
+import { Sprite } from './Sprite';
+import { defaultLook } from '../sprites';
 
 export const CLASS_ICON: Record<string, string> = { fighter: '🛡️', rogue: '🗡️', mage: '🔮', cleric: '✝️' };
 export const ROLE_ICON: Record<string, string> = { brute: '👹', archer: '🏹', caster: '🧙', support: '🕯️', boss: '💀' };
@@ -75,8 +77,8 @@ export function HeroSummary({ hero, children }: { hero: Hero; children?: Compone
   return (
     <div class={`card ${hero.dead ? 'disabled' : ''}`}>
       <div class="row">
-        <div class="portrait" style={{ fontSize: '1.8rem' }}>
-          {hero.dead ? '💀' : CLASS_ICON[hero.cls]}
+        <div class="portrait" style={{ fontSize: '1.8rem', width: '52px', height: '52px', overflow: 'hidden' }}>
+          {hero.dead ? '🪦' : <Sprite name={hero.look ?? defaultLook(hero.cls)} scale={2} />}
         </div>
         <div class="grow col" style={{ gap: '4px' }}>
           <div class="row spread">

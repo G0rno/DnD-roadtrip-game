@@ -7,6 +7,8 @@ import { finishCreation } from '../../engine/run';
 import { Rng, newSeed } from '../../engine/rng';
 import { useGame } from '../store';
 import { CLASS_ICON, STAT_LABEL } from '../components/bits';
+import { Sprite } from '../components/Sprite';
+import { HERO_LOOKS, LOOK_NAMES, defaultLook } from '../sprites';
 
 const STEPS = ['Name', 'Race', 'Class', 'Background', 'Review'];
 
@@ -30,23 +32,23 @@ export function Create() {
   const { act, quit } = useGame();
   const [player, setPlayer] = useState(0);
   const [step, setStep] = useState(0);
-  const [drafts, setDrafts] = useState<HeroDraft[]>([
+  const [drafts, setDrafts] = useState<(HeroDraft & { lookChosen?: boolean })[]>([
     { name: '', race: 'human', cls: 'fighter', background: 'soldier', humanStat: 'might' },
     { name: '', race: 'elf', cls: 'mage', background: 'scholar', humanStat: 'mind' },
   ]);
   const d = drafts[player];
-  const set = (patch: Partial<HeroDraft>) => setDrafts(drafts.map((x, i) => (i === player ? { ...x, ...patch } : x)));
+  const set = (patch: Partial<HeroDraft & { lookChosen?: boolean }>) => setDrafts(drafts.map((x, i) => (i === player ? { ...x, ...patch } : x)));
 
   const randomizeStep = () => {
     const r = randomDraft(rng(), [drafts[1 - player].name]);
     if (step === 0) set({ name: r.name });
     if (step === 1) set({ race: r.race, humanStat: r.humanStat });
-    if (step === 2) set({ cls: r.cls });
+    if (step === 2) set({ cls: r.cls, look: defaultLook(r.cls), lookChosen: false });
     if (step === 3) set({ background: r.background });
   };
   const randomizeAll = () => {
     const r = randomDraft(rng(), [drafts[1 - player].name]);
-    set(r);
+    set({ ...r, look: defaultLook(r.cls), lookChosen: false });
     setStep(4);
   };
 
@@ -132,7 +134,7 @@ export function Create() {
               {CLASS_IDS.map((id) => {
                 const c = CLASSES[id];
                 return (
-                  <div class={`card clickable col ${d.cls === id ? 'selected' : ''}`} style={{ gap: '6px' }} onClick={() => set({ cls: id })}>
+                  <div class={`card clickable col ${d.cls === id ? 'selected' : ''}`} style={{ gap: '6px' }} onClick={() => set({ cls: id, look: d.lookChosen ? d.look : defaultLook(id) })}>
                     <div class="row">
                       <span style={{ fontSize: '1.8rem' }}>{CLASS_ICON[id]}</span>
                       <div>
@@ -150,6 +152,21 @@ export function Create() {
                   </div>
                 );
               })}
+            </div>
+            <div class="row wrap" style={{ gap: '8px' }}>
+              <span class="muted">Look:</span>
+              {HERO_LOOKS.map((l) => (
+                <div
+                  class={`card clickable ${(d.look ?? defaultLook(d.cls)) === l ? 'selected' : ''}`}
+                  style={{ padding: '6px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}
+                  onClick={() => set({ look: l, lookChosen: true })}
+                >
+                  <div style={{ height: '58px', display: 'flex', alignItems: 'flex-end' }}>
+                    <Sprite name={l} scale={2.5} />
+                  </div>
+                  <span class="tiny muted">{LOOK_NAMES[l]}</span>
+                </div>
+              ))}
             </div>
             {player === 1 && (
               <div class="panel tight small">
@@ -181,7 +198,7 @@ export function Create() {
               return (
                 <div class="panel col">
                   <div class="row">
-                    <span style={{ fontSize: '2.4rem' }}>{CLASS_ICON[x.cls]}</span>
+                    <Sprite name={x.look ?? defaultLook(x.cls)} scale={3.5} />
                     <div>
                       <h2>{x.name || `Player ${i + 1}`}</h2>
                       <div class="muted">

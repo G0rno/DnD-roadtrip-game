@@ -5,13 +5,14 @@ import { newRun } from '../../engine/run';
 import { Modal } from '../components/bits';
 
 interface Props {
-  onOpen: (run: Run) => void;
+  onOpen: (run: Run, resumed: boolean) => void;
+  openSettings?: () => void;
   settings: Settings;
   setSettings: (s: Settings) => void;
   toast: (m: string) => void;
 }
 
-export function Title({ onOpen, settings, setSettings, toast }: Props) {
+export function Title({ onOpen, settings, setSettings, toast, openSettings }: Props) {
   const [, refresh] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const [showHall, setShowHall] = useState(false);
@@ -19,11 +20,11 @@ export function Title({ onOpen, settings, setSettings, toast }: Props) {
   const meta = loadMeta();
 
   const start = (slot: number) => {
-    const run = newRun(slot);
+    const run = newRun(slot, undefined, true);
     saveRun(run);
     meta.runsStarted += 1;
     saveMeta(meta);
-    onOpen(run);
+    onOpen(run, false);
   };
 
   const importFile = (e: Event) => {
@@ -76,7 +77,7 @@ export function Title({ onOpen, settings, setSettings, toast }: Props) {
                 disabled={s.broken}
                 onClick={() => {
                   const run = loadRun(s.slot);
-                  if (run) onOpen(run);
+                  if (run) onOpen(run, true);
                   else toast('This save could not be read.');
                 }}
               >
@@ -89,6 +90,7 @@ export function Title({ onOpen, settings, setSettings, toast }: Props) {
 
       <div class="row wrap" style={{ justifyContent: 'center' }}>
         <button onClick={() => setShowHall(true)}>🏆 Hall of fame</button>
+        <button onClick={openSettings}>⚙️ Settings and API key</button>
         <button onClick={() => exportBackup().then(toast)}>💾 Export backup</button>
         <label>
           <span class="badge" style={{ minHeight: '48px', padding: '0 16px', borderRadius: '9px', cursor: 'pointer', fontSize: '1rem', background: 'linear-gradient(180deg, #3a3240, #2a242f)', borderColor: 'var(--line2)' }}>
@@ -100,7 +102,7 @@ export function Title({ onOpen, settings, setSettings, toast }: Props) {
           🌙 Night mode {settings.nightMode ? 'on' : 'off'}
         </button>
       </div>
-      <div class="tiny dim">Saves stay on this iPad. Export a backup to the Files app now and then. · v0.2 (Phase 2: core engine)</div>
+      <div class="tiny dim">Saves stay on this iPad. Export a backup to the Files app now and then. · v0.4 (Phase 4: AI Game Master)</div>
 
       {confirmDelete !== null && (
         <Modal title={`Delete slot ${confirmDelete}?`} onClose={() => setConfirmDelete(null)}>

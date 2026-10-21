@@ -188,6 +188,7 @@ export interface HeroDraft {
   cls: ClassId;
   background: BackgroundId;
   humanStat?: Stat;
+  look?: string;
 }
 
 export function createHero(rng: Rng, id: HeroId, draft: HeroDraft, uid: () => string): Hero {
@@ -203,6 +204,7 @@ export function createHero(rng: Rng, id: HeroId, draft: HeroDraft, uid: () => st
     race: draft.race,
     cls: draft.cls,
     background: draft.background,
+    look: draft.look,
     level: 1,
     xp: 0,
     stats,
@@ -312,4 +314,51 @@ export function equipSlotFor(hero: Hero, item: Item): EquipSlot {
 export function fixHp(hero: Hero) {
   if (hero.dead) return;
   hero.hp = clamp(hero.hp, 1, derive(hero).maxHp);
+}
+
+// ---------- Item comparison ----------
+
+export interface StatDelta {
+  key: string;
+  label: string;
+  before: number;
+  after: number;
+  /** Higher is better (false for none so far, kept for clarity). */
+  unit: '' | '%';
+}
+
+/** Typical damage of a basic attack, before enemy Armor. */
+export function attackPower(hero: Hero, d: Derived): number {
+  const avg = (d.weapon.damage[0] + d.weapon.damage[1]) / 2 + 1.2 * d.stats[d.weapon.stat] + 0.8 * (hero.level - 1);
+  return avg * (1 + d.damagePct / 100);
+}
+
+/** Equips the item on a copy of the hero and returns how the real stats change. */
+export function compareEquip(hero: Hero, item: Item, slot: EquipSlot): { deltas: StatDelta[]; current?: Item } {
+  const before = derive(hero);
+  const copy: Hero = { ...hero, equipment: { ...hero.equipment, [slot]: item } };
+  const after = derive(copy);
+  const rows: [string, string, number, number, '' | '%'][] = [
+    ['attack', 'Attack damage', attackPower(hero, before), attackPower(copy, after), ''],
+    ['maxHp', 'Max HP', before.maxHp, after.maxHp, ''],
+    ['armor', 'Armor', before.armor, after.armor, ''],
+    ['dodge', 'Dodge', before.dodge, after.dodge, '%'],
+    ['crit', 'Crit chance', before.critChance, after.critChance, '%'],
+    ['critMult', 'Crit damage', Math.round(before.critMult * 100), Math.round(after.critMult * 100), '%'],
+    ['statusRes', 'Status resistance', before.statusRes, after.statusRes, '%'],
+    ['might', 'Might', before.stats.might, after.stats.might, ''],
+    ['agility', 'Agility', before.stats.agility, after.stats.agility, ''],
+    ['mind', 'Mind', before.stats.mind, after.stats.mind, ''],
+    ['spirit', 'Spirit', before.stats.spirit, after.stats.spirit, ''],
+    ['lifesteal', 'Lifesteal', before.lifesteal, after.lifesteal, '%'],
+    ['thorns', 'Thorns', before.thorns, after.thorns, ''],
+    ['healingReceived', 'Healing received', before.healingReceived, after.healingReceived, '%'],
+    ['meterGain', 'Team meter gain', before.meterGain, after.meterGain, '%'],
+    ['goldFind', 'Gold found', before.goldFind, after.goldFind, '%'],
+    ['startShield', 'Start shield', before.startShield, after.startShield, ''],
+  ];
+  const deltas = rows
+    .map(([key, label, b, a, unit]) => ({ key, label, before: Math.round(b * 10) / 10, after: Math.round(a * 10) / 10, unit }))
+    .filter((r) => Math.abs(r.after - r.before) >= 0.1);
+  return { deltas, current: hero.equipment[slot] };
 }

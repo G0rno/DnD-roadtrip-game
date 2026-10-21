@@ -4,7 +4,10 @@ import type {
   ConsumableStack,
   CurseId,
   EquipSlot,
+  AiEventDraft,
+  Difficulty,
   EventState,
+  SceneState,
   Hero,
   HeroId,
   Item,
@@ -45,7 +48,17 @@ import {
   upgradeItem,
 } from './items';
 import { startCombat } from './combat';
-import { baseDc, rollCheck } from './checks';
+import { baseDc, dcFor, rollCheck } from './checks';
+import {
+  addJournal,
+  chooseEventType,
+  EVENT_TYPES,
+  initStory,
+  nodeKey,
+  offlineEvent,
+  rewardFor,
+  story,
+} from './story';
 
 export const RUN_VERSION = 1;
 export const NODES_PER_ACT = 10;
@@ -64,7 +77,7 @@ export function pickRegions(r: Rng): string[] {
   return chosen;
 }
 
-export function newRun(slot: number, seed = newSeed()): Run {
+export function newRun(slot: number, seed = newSeed(), narrate = false): Run {
   const run: Run = {
     version: RUN_VERSION,
     slot,
@@ -96,6 +109,10 @@ export function newRun(slot: number, seed = newSeed()): Run {
     uidCounter: 0,
   };
   run.regions = pickRegions(rng(run));
+  if (narrate) {
+    run.narrate = true;
+    run.story = initStory();
+  }
   return run;
 }
 
@@ -108,7 +125,38 @@ export function finishCreation(run: Run, drafts: [HeroDraft, HeroDraft]) {
   log(run, `Act 1: ${regionName(run)}.`, 'info');
   run.choices = genChoices(run);
   run.screen = 'hub';
+  if (run.narrate) openScene(run, { kind: 'runStart', status: 'pending', title: '', text: '', next: 'hub' });
   takeActSnapshot(run);
+}
+
+// ====================================================================
+// Scenes (narration between steps)
+// ====================================================================
+
+export function openScene(run: Run, scene: SceneState) {
+  run.scene = scene;
+  run.screen = 'scene';
+}
+
+/** Fills the current scene with narration (from the AI, the buffer or a template). */
+export function setSceneText(run: Run, title: string, text: string, summary?: string) {
+  if (!run.scene) return;
+  run.scene.title = title;
+  run.scene.text = text;
+  run.scene.summary = summary;
+  run.scene.status = 'ready';
+}
+
+export function continueScene(run: Run) {
+  const sc = run.scene;
+  if (!sc || sc.status !== 'ready') return;
+  const kinds = { node: 'scene', bossIntro: 'boss', runStart: 'intro', actIntro: 'act', ending: 'ending' } as const;
+  addJournal(run, kinds[sc.kind], sc.title, sc.text, sc.summary);
+  if (sc.key) delete story(run).buffer[sc.key];
+  run.scene = undefined;
+  if (sc.next === 'enterNode') enterNode(run);
+  else if (sc.next === 'victory') run.screen = 'victory';
+  else run.screen = 'hub';
 }
 
 export function regionId(run: Run): string {
@@ -165,6 +213,21 @@ export function chooseNode(run: Run, index: number) {
   if (!node || run.screen !== 'hub') return;
   run.snapshots.nodeStart = serialize(run);
   run.currentNode = node;
+  // Narrated runs open with a short scene (events are scenes already).
+  if (run.narrate && node.type !== 'event') {
+    const key = nodeKey(run, node, index);
+    const buffered = story(run).buffer[key];
+    openScene(run, { kind: node.type === 'boss' ? 'bossIntro' : 'node', status: 'pending', title: '', text: '', next: 'enterNode', key });
+    if (buffered) setSceneText(run, buffered.title, buffered.text, buffered.summary);
+    return;
+  }
+  enterNode(run);
+}
+
+/** Starts the chosen node: a fight, an event, a rest, a shop or a treasure. */
+export function enterNode(run: Run) {
+  const node = run.currentNode;
+  if (!node) return;
   const r = rng(run);
   switch (node.type) {
     case 'fight':
@@ -248,6 +311,7 @@ function resolveVictory(run: Run) {
   }
 
   log(run, `Victory! +${c.xpReward} XP each.`, 'loot');
+  if (run.narrate) run.pendingOutro = { kind: c.kind, enemies: [...new Set(c.enemies.map((e) => e.name))] };
   if (c.kind === 'boss') {
     run.stats.bossesKilled += 1;
     run.bossBeaten = true;
@@ -342,6 +406,7 @@ function completeAct(run: Run) {
   if (run.act >= ACTS) {
     run.screen = 'victory';
     log(run, 'The final boss is defeated! The road is yours.', 'loot');
+    if (run.narrate) openScene(run, { kind: 'ending', status: 'pending', title: '', text: '', next: 'victory' });
     return;
   }
   run.act += 1;
@@ -353,6 +418,11 @@ function completeAct(run: Run) {
   run.notice = `Act ${run.act}: ${regionName(run)}`;
   log(run, `Act ${run.act} begins: ${regionName(run)}. Curses lifted.`, 'info');
   run.screen = 'hub';
+  story(run).eventBuffer = [];
+  if (run.narrate) {
+    run.notice = undefined;
+    openScene(run, { kind: 'actIntro', status: 'pending', title: '', text: '', next: 'hub' });
+  }
   takeActSnapshot(run);
 }
 
@@ -414,6 +484,7 @@ export function lootDiscardConsumable(run: Run, index: number) {
 
 /** Leaves the loot screen. Anything not taken is salvaged automatically. */
 export function lootDone(run: Run) {
+  run.pendingOutro = undefined;
   collectLootCurrency(run);
   for (const it of run.pendingLoot) run.essence += salvageValue(it);
   run.pendingLoot = [];
@@ -807,6 +878,19 @@ export function leaveShop(run: Run) {
 // ====================================================================
 
 function makeEvent(run: Run): EventState {
+  if (run.narrate) {
+    const type = chooseEventType(run);
+    if (type === 'villain') story(run).villainBeats[run.act] = (story(run).villainBeats[run.act] ?? 0) + 1;
+    const ev: EventState = { templateId: type, title: '', text: '', options: [], status: 'pending', type, reward: rewardFor(run, type), penalty: EVENT_TYPES[type].penalty };
+    // Use a pre-written event of the same type if the buffer has one.
+    const buf = story(run).eventBuffer;
+    const i = buf.findIndex((d) => d.type === type && d.region === regionId(run));
+    if (i >= 0) {
+      applyEventDraft(run, ev, buf[i]);
+      buf.splice(i, 1);
+    }
+    return ev;
+  }
   const t = rng(run).pick(EVENTS);
   const dc = baseDc(run.distance);
   return {
@@ -814,61 +898,108 @@ function makeEvent(run: Run): EventState {
     title: t.title,
     text: t.text,
     options: t.options.map((o) => ({ stat: o.stat, label: o.label, dc: dc + o.diff })),
+    status: 'ready',
+    reward: t.reward,
+    penalty: t.penalty,
   };
+}
+
+/** Fills an event with a scene written by the AI (or an offline template). */
+export function applyEventDraft(run: Run, ev: EventState, d: AiEventDraft) {
+  ev.title = d.title;
+  ev.text = d.text;
+  ev.summary = d.summary;
+  ev.npc = d.npc?.name ? d.npc : undefined;
+  ev.options = d.choices.slice(0, 4).map((c) => ({ stat: c.stat, label: c.label, difficulty: c.difficulty, dc: dcFor(run, c.difficulty) }));
+  if (!ev.options.length) ev.options = offlineEvent(run, ev.type ?? 'social').choices.map((c) => ({ stat: c.stat, label: c.label, difficulty: c.difficulty, dc: dcFor(run, c.difficulty) }));
+  ev.status = 'ready';
+  if (ev.npc && !story(run).npcsMet.some((n) => n.name === ev.npc!.name)) story(run).npcsMet.push({ name: ev.npc.name, role: ev.npc.role, note: ev.npc.description });
+}
+
+export function setEventDraft(run: Run, d: AiEventDraft) {
+  if (run.event && run.event.status === 'pending') applyEventDraft(run, run.event, d);
+}
+
+/** "Something else": the GM mapped the players' idea to a check; add it as a choice. */
+export function addFreeTextOption(run: Run, label: string, stat: Stat | 'none', difficulty: Difficulty): number {
+  const ev = run.event;
+  if (!ev || ev.result) return -1;
+  ev.options = ev.options.filter((o) => !o.freeText);
+  ev.options.push({ stat, label, difficulty, dc: dcFor(run, difficulty), freeText: true });
+  return ev.options.length - 1;
 }
 
 export function eventRoll(run: Run, heroId: HeroId, optionIndex: number) {
   const ev = run.event;
-  if (!ev || ev.result) return;
+  if (!ev || ev.result || ev.status === 'pending') return;
   const opt = ev.options[optionIndex];
   if (!opt || getHero(run, heroId).dead) return;
   ev.chosen = optionIndex;
+  if (opt.stat === 'none') {
+    ev.result = { heroId, stat: 'spirit', dice: [0, 0], bonus: 0, total: 0, dc: 0, tier: 'success', rerolled: false, noRoll: true };
+    return;
+  }
   ev.result = rollCheck(rng(run), run, heroId, opt.stat, opt.dc);
 }
 
 export function eventReroll(run: Run) {
   const ev = run.event;
-  if (!ev?.result || ev.outcomeText || run.rerollTokens <= 0) return;
-  if (ev.result.tier === 'success' || ev.result.tier === 'critical') return;
-  run.rerollTokens -= 1;
+  if (!ev?.result || ev.outcomeText || run.rerollTokens <= 0 || ev.result.noRoll) return;
+  if (ev.result.tier === 'success' || ev.result.tier === 'great') return;
   const opt = ev.options[ev.chosen!];
+  if (opt.stat === 'none') return;
+  run.rerollTokens -= 1;
   ev.result = rollCheck(rng(run), run, ev.result.heroId, opt.stat, opt.dc, true);
 }
 
+const TIER_WORDS = { great: 'Great success', success: 'Success', partial: 'Partial success', failure: 'Failure', bad: 'Bad failure' };
+
+/** Applies the coded reward or penalty for the rolled tier. The GM only narrates it afterwards. */
 export function eventAccept(run: Run) {
   const ev = run.event;
   if (!ev?.result || ev.outcomeText) return;
-  const t = EVENTS.find((e) => e.id === ev.templateId)!;
   const tier = ev.result.tier;
   const h = getHero(run, ev.result.heroId);
   const r = rng(run);
-  const mult = tier === 'critical' ? 2 : tier === 'success' ? 1 : tier === 'partial' ? 0.5 : 0;
-  const parts: string[] = [tier === 'failure' ? t.failure : tier === 'partial' ? t.partial : t.success];
-  if (tier === 'critical') parts.push('Critical success: double reward!');
+  const mult = { great: 2, success: 1, partial: 0.5, failure: 0, bad: 0 }[tier];
+  const penaltyMult = { great: 0, success: 0, partial: 0.5, failure: 1, bad: 2 }[tier];
+  const facts: string[] = [];
+  const template = EVENTS.find((e) => e.id === ev.templateId);
+  const lines: string[] = [];
+  if (template) lines.push(tier === 'failure' || tier === 'bad' ? template.failure : tier === 'partial' ? template.partial : template.success);
+  else lines.push(`${TIER_WORDS[tier]}.`);
+  if (tier === 'great') facts.push('Great success: double reward.');
 
   if (mult > 0) {
-    switch (t.reward) {
+    switch (ev.reward) {
       case 'gold': {
         const g = Math.round((20 + 4 * run.distance) * mult * goldMult(run));
         run.pendingGold += g;
+        facts.push(`The party gains ${g} gold.`);
         break;
       }
       case 'item': {
-        const n = tier === 'critical' ? 2 : 1;
-        for (let i = 0; i < n; i++) {
-          run.pendingLoot.push(generateItem(r, uid(run), { power: itemPower(run), source: tier === 'partial' ? 'normal' : 'treasure' }));
-        }
+        const n = tier === 'great' ? 2 : 1;
+        for (let i = 0; i < n; i++) run.pendingLoot.push(generateItem(r, uid(run), { power: itemPower(run), source: tier === 'partial' ? 'normal' : 'treasure' }));
+        facts.push(`The party finds ${n === 2 ? 'two items' : 'an item'}.`);
         break;
       }
-      case 'xp':
-        run.pendingXp += Math.round((15 + 4 * run.distance) * mult);
+      case 'xp': {
+        const xp = Math.round((15 + 4 * run.distance) * mult);
+        run.pendingXp += xp;
+        facts.push(`Everyone gains ${xp} XP.`);
         break;
-      case 'consumable':
-        run.pendingConsumables.push({ id: r.pick(CONSUMABLE_IDS), qty: tier === 'critical' ? 2 : 1 });
+      }
+      case 'consumable': {
+        const id = r.pick(CONSUMABLE_IDS);
+        run.pendingConsumables.push({ id, qty: tier === 'great' ? 2 : 1 });
+        facts.push(`The party gets ${tier === 'great' ? 'two' : 'a'} ${CONSUMABLES[id].name}.`);
         break;
+      }
       case 'reroll':
         if (tier !== 'partial') {
-          run.rerollTokens += tier === 'critical' ? 2 : 1;
+          run.rerollTokens += tier === 'great' ? 2 : 1;
+          facts.push('The party gains a reroll token.');
         }
         break;
       case 'heal':
@@ -876,28 +1007,54 @@ export function eventAccept(run: Run) {
           const d = derive(x);
           x.hp = Math.min(d.maxHp, x.hp + Math.round(d.maxHp * 0.4 * mult));
         }
+        facts.push(`The party heals ${Math.round(40 * mult)}% of their HP.`);
         break;
+      case 'liftCurse': {
+        const cursed = run.heroes.filter((x) => x.curses.length);
+        const n = tier === 'great' ? 2 : tier === 'partial' ? 1 : 1;
+        for (let i = 0; i < n && cursed.length; i++) {
+          const x = cursed[i % cursed.length];
+          const c = x.curses.shift();
+          if (c) facts.push(`${x.name}'s curse (${CURSES[c].name}) is lifted.`);
+        }
+        break;
+      }
     }
   }
-  const penaltyMult = tier === 'failure' ? 1 : tier === 'partial' ? 0.5 : 0;
   if (penaltyMult > 0) {
-    if (t.penalty === 'damage') {
-      const dmg = Math.round(derive(h).maxHp * 0.15 * penaltyMult);
+    if (ev.penalty === 'damage') {
+      const dmg = Math.round(derive(h).maxHp * 0.12 * penaltyMult);
       h.hp = Math.max(1, h.hp - dmg);
-      parts.push(`${h.name} loses ${dmg} HP.`);
+      facts.push(`${h.name} loses ${dmg} HP.`);
     }
-    if (t.penalty === 'gold' && tier === 'failure') {
-      const g = Math.min(run.gold, 10 + 2 * run.distance);
+    if (ev.penalty === 'gold' && tier !== 'partial') {
+      const g = Math.min(run.gold, Math.round((10 + 2 * run.distance) * penaltyMult));
       run.gold -= g;
-      parts.push(`The party loses ${g} gold.`);
+      facts.push(`The party loses ${g} gold.`);
     }
   }
-  ev.outcomeText = parts.join(' ');
-  log(run, `${t.title}: ${tier}.`, tier === 'failure' ? 'bad' : 'loot');
+  const opt = ev.options[ev.chosen!];
+  if (ev.type === 'moral' || ev.type === 'villain') {
+    const s = story(run);
+    s.flags.push({ act: run.act, text: `${ev.title}: ${opt.label} (${TIER_WORDS[tier].toLowerCase()})` });
+    if (s.flags.length > 12) s.flags.shift();
+  }
+  ev.outcomeFacts = `${h.name} chose: "${opt.label}". ${ev.result.noRoll ? 'No roll needed.' : `${TIER_WORDS[tier]}.`} ${facts.join(' ')}`.trim();
+  ev.outcomeText = [...lines, ...facts].join(' ');
+  log(run, `${ev.title}: ${TIER_WORDS[tier].toLowerCase()}.`, tier === 'failure' || tier === 'bad' ? 'bad' : 'loot');
+}
+
+/** Replaces the plain outcome text with the GM's narration. */
+export function setEventNarration(run: Run, text: string) {
+  if (!run.event?.outcomeText) return;
+  run.event.outcomeText = text;
+  run.event.outcomeNarrated = true;
 }
 
 export function eventDone(run: Run) {
-  if (!run.event?.outcomeText) return;
+  const ev = run.event;
+  if (!ev?.outcomeText) return;
+  if (run.narrate) addJournal(run, 'event', ev.title, `${ev.text}\n\n${ev.outcomeText}`, `${ev.summary ?? ev.title} → ${ev.outcomeFacts ?? ''}`.slice(0, 220));
   finishNode(run);
 }
 

@@ -55,9 +55,9 @@ describe('skill checks', () => {
   it('odds sum to 1 and rolls land in a tier', () => {
     const run = setupRun();
     const o = checkOdds(run, run.heroes[0], 'might', 14);
-    expect(o.success + o.partial + o.failure).toBeCloseTo(1);
+    expect(o.success + o.partial + o.failure + o.bad).toBeCloseTo(1);
     const res = rollCheck(new Rng(run), run, 'p1', 'might', 14);
-    expect(['critical', 'success', 'partial', 'failure']).toContain(res.tier);
+    expect(['great', 'success', 'partial', 'failure', 'bad']).toContain(res.tier);
     expect(res.total).toBe(res.dice[0] + res.dice[1] + res.bonus);
   });
 });
@@ -230,5 +230,85 @@ describe('run flow', () => {
     lootDone(run);
     expect(run.distance).toBe(1);
     expect(['hub', 'levelup']).toContain(run.screen);
+  });
+});
+
+import { continueScene, setSceneText, setEventDraft, eventAccept, eventDone, eventRoll, addFreeTextOption } from '../src/engine/run';
+import { offlineBible, offlineEvent, offlineNodeScene, story } from '../src/engine/story';
+import { tierFor } from '../src/engine/checks';
+
+describe('story flow (narrated runs, offline fallbacks)', () => {
+  function narrated() {
+    const run = newRun(1, 99, true);
+    finishCreation(run, [
+      { name: 'Ana', race: 'human', cls: 'fighter', background: 'soldier' },
+      { name: 'Bo', race: 'elf', cls: 'rogue', background: 'criminal' },
+    ]);
+    return run;
+  }
+
+  it('opens with a scene, then the path', () => {
+    const run = narrated();
+    expect(run.screen).toBe('scene');
+    story(run).bible = offlineBible(run);
+    expect(story(run).bible!.lieutenants.length).toBe(4);
+    setSceneText(run, 'Intro', 'It begins.');
+    continueScene(run);
+    expect(run.screen).toBe('hub');
+    expect(story(run).journal.length).toBe(1);
+  });
+
+  it('a fight node shows a scene first, then the fight, with the lieutenant as boss name', () => {
+    const run = narrated();
+    story(run).bible = offlineBible(run);
+    setSceneText(run, 'Intro', 'It begins.');
+    continueScene(run);
+    run.choices = [{ type: 'fight' }];
+    chooseNode(run, 0);
+    expect(run.screen).toBe('scene');
+    const s = offlineNodeScene(run, { type: 'fight' });
+    setSceneText(run, s.title, s.text, s.summary);
+    continueScene(run);
+    expect(run.screen).toBe('combat');
+    // Boss name comes from the story bible.
+    const boss = newRun(2, 5, true);
+    finishCreation(boss, [
+      { name: 'A', race: 'human', cls: 'fighter', background: 'soldier' },
+      { name: 'B', race: 'human', cls: 'mage', background: 'scholar' },
+    ]);
+    story(boss).bible = offlineBible(boss);
+    startCombat(boss, 'boss', boss.regions[0]);
+    expect(boss.combat!.enemies[0].name).toBe(story(boss).bible!.lieutenants[0].name);
+  });
+
+  it('events: draft, free-text option, no-roll choice, outcome facts and journal', () => {
+    const run = narrated();
+    story(run).bible = offlineBible(run);
+    setSceneText(run, 'Intro', 'x');
+    continueScene(run);
+    run.choices = [{ type: 'event' }];
+    chooseNode(run, 0);
+    expect(run.screen).toBe('event');
+    expect(run.event!.status).toBe('pending');
+    setEventDraft(run, { ...offlineEvent(run, 'moral'), choices: [{ label: 'Spare him', stat: 'none', difficulty: 'normal' }, { label: 'Fight', stat: 'might', difficulty: 'hard' }] });
+    expect(run.event!.status).toBe('ready');
+    const i = addFreeTextOption(run, 'Climb the wall', 'agility', 'easy');
+    expect(run.event!.options[i].freeText).toBe(true);
+    eventRoll(run, 'p1', 0);
+    expect(run.event!.result!.noRoll).toBe(true);
+    expect(run.event!.result!.tier).toBe('success');
+    eventAccept(run);
+    expect(run.event!.outcomeFacts).toContain('Spare him');
+    eventDone(run);
+    expect(story(run).journal.some((j) => j.kind === 'event')).toBe(true);
+  });
+
+  it('tiers follow the margin', () => {
+    expect(tierFor(20, 15, [5, 5])).toBe('great');
+    expect(tierFor(15, 15, [5, 5])).toBe('success');
+    expect(tierFor(13, 15, [5, 5])).toBe('partial');
+    expect(tierFor(9, 15, [5, 5])).toBe('failure');
+    expect(tierFor(5, 15, [2, 2])).toBe('bad');
+    expect(tierFor(5, 30, [10, 10])).toBe('great');
   });
 });

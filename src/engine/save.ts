@@ -1,5 +1,6 @@
 import type { Run } from './types';
 import { RUN_VERSION, score } from './run';
+import { initStory } from './story';
 import { CLASSES } from './data/characters';
 
 // Saves live in localStorage on the iPad: 3 run slots + one meta save.
@@ -24,11 +25,20 @@ export interface Meta {
   runsStarted: number;
   bestDistance: number;
   hall: HallEntry[];
+  /** All-time AI spend on this device. */
+  aiCost?: { usd: number; calls: number; haikuUsd: number; sonnetUsd: number };
 }
 
 export interface Settings {
   nightMode: boolean;
   confirmEndTurn: boolean;
+  /** Shorter pauses between enemy actions. */
+  fastCombat: boolean;
+  narrationLang: 'en' | 'fr';
+  /** Haiku only (cheaper). */
+  budgetMode: boolean;
+  /** Warn when this run's AI cost passes this many dollars. */
+  budgetWarnUsd: number;
 }
 
 export interface SlotSummary {
@@ -75,6 +85,15 @@ export function loadRun(slot: number): Run | null {
 /** Upgrades older saves as the format changes. */
 export function migrate(run: Run): Run {
   if (!run.version) run.version = 1;
+  // Phase 2 saves: turn on narration; the story bible gets written on the next scene.
+  if (run.narrate === undefined && run.heroes?.length) {
+    run.narrate = true;
+    run.story ??= initStory();
+    if (run.screen === 'hub' && !run.story.bible) {
+      run.scene = { kind: 'runStart', status: 'pending', title: '', text: '', next: 'hub' };
+      run.screen = 'scene';
+    }
+  }
   run.version = RUN_VERSION;
   return run;
 }
@@ -141,7 +160,7 @@ export function recordRunEnd(run: Run, outcome: 'victory' | 'wipe') {
 }
 
 export function loadSettings(): Settings {
-  const base: Settings = { nightMode: false, confirmEndTurn: false };
+  const base: Settings = { nightMode: false, confirmEndTurn: false, fastCombat: false, narrationLang: 'en', budgetMode: false, budgetWarnUsd: 5 };
   try {
     return { ...base, ...JSON.parse(storage()?.getItem(SETTINGS_KEY) ?? '{}') };
   } catch {

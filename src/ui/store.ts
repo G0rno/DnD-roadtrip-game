@@ -13,6 +13,8 @@ export interface Game {
   toast: (msg: string) => void;
   openInventory: () => void;
   openMenu: () => void;
+  openJournal: () => void;
+  openSettings: () => void;
 }
 
 export const GameCtx = createContext<Game | null>(null);

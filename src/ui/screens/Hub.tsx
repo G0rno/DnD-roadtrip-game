@@ -1,4 +1,7 @@
+import { useEffect } from 'preact/hooks';
 import { useGame } from '../store';
+import { prefetch } from '../../ai/gm';
+import { story } from '../../engine/story';
 import { TopBar } from '../components/TopBar';
 import { HeroSummary, NODE_INFO } from '../components/bits';
 import { chooseNode, dismissNotice, NODES_PER_ACT } from '../../engine/run';
@@ -8,6 +11,13 @@ import { REGIONS } from '../../engine/data/enemies';
 export function Hub() {
   const { run, act, openInventory } = useGame();
   const region = REGIONS[run.regions[run.act - 1]];
+
+  // While there's signal, pre-write the scenes on offer so dead zones still have narration.
+  useEffect(() => {
+    const t = setTimeout(() => prefetch(run, () => act(() => {})), 400);
+    return () => clearTimeout(t);
+  }, [run.distance, run.act]);
+  const buffered = run.narrate ? Object.keys(story(run).buffer).length + story(run).eventBuffer.length : 0;
 
   return (
     <>
@@ -49,7 +59,9 @@ export function Hub() {
               );
             })}
           </div>
-          <div class="center tiny dim">Phase 3 replaces this with the full branching map.</div>
+          <div class="center tiny dim">
+            Phase 3 replaces this with the full branching map.{run.narrate ? ` · ${buffered} scenes pre-written for offline play` : ''}
+          </div>
         </div>
 
         <div class="row spread">

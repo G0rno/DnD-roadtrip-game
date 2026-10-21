@@ -134,6 +134,8 @@ export interface Hero {
   race: RaceId;
   cls: ClassId;
   background: BackgroundId;
+  /** Sprite name for the hero's look (cosmetic). */
+  look?: string;
   level: number;
   xp: number;
   /** Allocated stats (class base + race + level-up points). Gear and buffs are added in derived stats. */
@@ -219,6 +221,17 @@ export interface FloatText {
   text: string;
   kind: 'dmg' | 'heal' | 'crit' | 'miss' | 'status';
   seq: number;
+  /** Event this float belongs to (for step-by-step playback). */
+  ev?: number;
+  /** HP change shown by this float (damage or heal), for animated HP bars. */
+  amount?: number;
+}
+
+/** One action in combat (a hero action, an enemy move, or status ticks), for playback. */
+export interface CombatEvent {
+  seq: number;
+  actor: string | null;
+  label: string;
 }
 
 export interface CombatState {
@@ -234,16 +247,25 @@ export interface CombatState {
   goldReward: number;
   floats: FloatText[];
   floatSeq: number;
+  events?: CombatEvent[];
+  evSeq?: number;
+  curEv?: number;
   enemiesFirst: boolean;
 }
 
 // ---------- Checks ----------
 
 export interface CheckOption {
-  stat: Stat;
+  /** 'none' = no roll needed (e.g. a moral choice). */
+  stat: Stat | 'none';
   label: string;
   dc: number;
+  difficulty?: Difficulty;
+  freeText?: boolean;
 }
+
+/** Outcome tiers by margin (GM note): great +5 or double 10, success 0..+4, partial -1..-3, failure -4..-7, bad -8 or less. */
+export type CheckTier = 'great' | 'success' | 'partial' | 'failure' | 'bad';
 
 export interface CheckResult {
   heroId: HeroId;
@@ -252,8 +274,10 @@ export interface CheckResult {
   bonus: number;
   total: number;
   dc: number;
-  tier: 'critical' | 'success' | 'partial' | 'failure';
+  tier: CheckTier;
   rerolled: boolean;
+  /** A choice that needed no roll (e.g. a moral choice). */
+  noRoll?: boolean;
 }
 
 export interface EventState {
@@ -264,6 +288,16 @@ export interface EventState {
   result?: CheckResult;
   outcomeText?: string;
   chosen?: number;
+  /** AI events: 'pending' while the GM writes the scene. */
+  status?: 'pending' | 'ready';
+  type?: string;
+  reward?: string;
+  penalty?: string;
+  summary?: string;
+  npc?: { name: string; role: string; description: string };
+  /** Plain facts of what the code decided, for the GM to narrate. */
+  outcomeFacts?: string;
+  outcomeNarrated?: boolean;
 }
 
 // ---------- Run ----------
@@ -286,7 +320,8 @@ export type Screen =
   | 'rest'
   | 'wipe'
   | 'victory'
-  | 'gameover';
+  | 'gameover'
+  | 'scene';
 
 export interface ShopState {
   stock: (Item | ConsumableStack | null)[];
@@ -346,4 +381,88 @@ export interface Run {
   skipRevive?: boolean;
   bossBeaten?: boolean;
   recorded?: boolean;
+  /** Narrated runs show AI or template scenes between nodes (off for headless bot runs). */
+  narrate?: boolean;
+  story?: StoryState;
+  scene?: SceneState;
+  /** A short fight outro still to be written (shown on the loot screen). */
+  pendingOutro?: { kind: CombatKind; enemies: string[]; text?: string };
+}
+
+// ---------- Story (AI Game Master) ----------
+
+export interface StoryBible {
+  title: string;
+  setting: string;
+  tone: string;
+  world: string;
+  villain: { name: string; title: string; motive: string; description: string };
+  /** One per act; the act bosses. */
+  lieutenants: { act: number; name: string; title: string; description: string }[];
+  acts: { act: number; title: string; hook: string; beats: string[] }[];
+  npcs: { name: string; role: string; description: string }[];
+  source: 'ai' | 'offline';
+}
+
+export type JournalKind = 'intro' | 'act' | 'scene' | 'event' | 'fight' | 'boss' | 'ending';
+
+export interface JournalEntry {
+  act: number;
+  distance: number;
+  kind: JournalKind;
+  title: string;
+  text: string;
+  /** One-line summary sent back to the AI as memory. */
+  summary: string;
+}
+
+export interface StoryFlag {
+  act: number;
+  text: string;
+}
+
+export interface StoryState {
+  bible?: StoryBible;
+  journal: JournalEntry[];
+  flags: StoryFlag[];
+  npcsMet: { name: string; role: string; note: string }[];
+  /** Villain encounters per act (index = act). */
+  villainBeats: number[];
+  /** Pre-written node scenes keyed by node signature. */
+  buffer: Record<string, { title: string; text: string; summary: string }>;
+  /** Pre-written events for the current region. */
+  eventBuffer: AiEventDraft[];
+  cost: CostTotals;
+}
+
+export interface CostTotals {
+  usd: number;
+  calls: number;
+  haikuUsd: number;
+  sonnetUsd: number;
+}
+
+export type Difficulty = 'easy' | 'normal' | 'hard' | 'veryhard';
+
+export interface AiEventDraft {
+  type: string;
+  region: string;
+  title: string;
+  text: string;
+  summary: string;
+  npc?: { name: string; role: string; description: string };
+  choices: { label: string; stat: Stat | 'none'; difficulty: Difficulty }[];
+}
+
+export type SceneKind = 'runStart' | 'actIntro' | 'node' | 'bossIntro' | 'ending';
+
+export interface SceneState {
+  kind: SceneKind;
+  status: 'pending' | 'ready';
+  title: string;
+  text: string;
+  next: 'enterNode' | 'hub' | 'victory';
+  /** Buffer key for node scenes. */
+  key?: string;
+  summary?: string;
 }

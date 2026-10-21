@@ -39,6 +39,8 @@ import {
   revive,
   skipRevive,
   bagToBelt,
+  continueScene,
+  setSceneText,
 } from './run';
 import { checkOdds } from './checks';
 
@@ -159,7 +161,7 @@ export function botStep(run: Run) {
         let best = { p: -1, h: 'p1' as HeroId, i: 0 };
         for (const h of run.heroes.filter((x) => !x.dead))
           ev.options.forEach((o, i) => {
-            const p = checkOdds(run, h, o.stat, o.dc).success;
+            const p = o.stat === 'none' ? 1 : checkOdds(run, h, o.stat, o.dc).success;
             if (p > best.p) best = { p, h: h.id, i };
           });
         eventRoll(run, best.h, best.i);
@@ -176,6 +178,10 @@ export function botStep(run: Run) {
       break;
     case 'wipe':
       dismissNotice(run);
+      break;
+    case 'scene':
+      if (run.scene && run.scene.status !== 'ready') setSceneText(run, 'Scene', '...');
+      continueScene(run);
       break;
     default:
       break;

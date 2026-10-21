@@ -80,7 +80,8 @@ function makeBoss(run: Run, regionId: string): Enemy {
   return {
     uid: uid(run),
     defId: `${regionId}.boss`,
-    name: region.boss.name,
+    // The act boss is the story's lieutenant for this act when a story bible exists.
+    name: run.story?.bible?.lieutenants.find((l) => l.act === run.act)?.name ?? region.boss.name,
     role: 'boss',
     row: 'front',
     hp,
@@ -142,6 +143,9 @@ export function startCombat(run: Run, kind: CombatKind, regionId: string): Comba
     goldReward: gold,
     floats: [],
     floatSeq: 0,
+    events: [],
+    evSeq: 0,
+    curEv: 0,
     enemiesFirst: false,
   };
   run.combat = combat;
@@ -263,8 +267,20 @@ export function liveEnemies(run: Run) {
 function float(run: Run, targetId: string, text: string, kind: 'dmg' | 'heal' | 'crit' | 'miss' | 'status') {
   const c = C(run);
   c.floatSeq += 1;
-  c.floats.push({ targetId, text, kind, seq: c.floatSeq });
-  if (c.floats.length > 24) c.floats.splice(0, c.floats.length - 24);
+  const digits = text.replace(/[^0-9]/g, '');
+  const amount = (kind === 'dmg' || kind === 'crit' || kind === 'heal') && digits ? Number(digits) : 0;
+  c.floats.push({ targetId, text, kind, seq: c.floatSeq, ev: c.curEv ?? 0, amount });
+  if (c.floats.length > 60) c.floats.splice(0, c.floats.length - 60);
+}
+
+/** Starts a new playback event; floats created after this belong to it. */
+export function beginEvent(run: Run, actor: string | null, label: string) {
+  const c = C(run);
+  c.events ??= [];
+  c.evSeq = (c.evSeq ?? 0) + 1;
+  c.curEv = c.evSeq;
+  c.events.push({ seq: c.evSeq, actor, label });
+  if (c.events.length > 40) c.events.splice(0, c.events.length - 40);
 }
 
 function gainMeter(run: Run, amount: number, by?: Hero) {
@@ -680,6 +696,7 @@ function executeIntent(run: Run, e: Enemy) {
   const c = C(run);
   if (!e.intent) return;
   const move = findMove(e, e.intent.moveId);
+  beginEvent(run, e.uid, move.name);
   const status: StatusId | undefined = move.status === 'region' ? regionHazard(run) : move.status;
   switch (move.kind) {
     case 'attack':
@@ -797,6 +814,7 @@ function startPlayerPhase(run: Run) {
     for (const k of Object.keys(me.cooldowns)) me.cooldowns[k] = Math.max(0, me.cooldowns[k] - ticks);
 
     // DoTs and regen.
+    if (me.statuses.some((st) => st.id === 'poison' || st.id === 'burn' || st.id === 'bleed' || st.id === 'regen')) beginEvent(run, null, 'Status effects');
     tickDots(
       run,
       me.statuses,
@@ -844,6 +862,7 @@ function enemyPhase(run: Run) {
   for (const e of [...c.enemies]) {
     if (e.dead) continue;
     // DoTs.
+    if (e.statuses.some((st) => st.id === 'poison' || st.id === 'burn' || st.id === 'bleed' || st.id === 'regen')) beginEvent(run, null, 'Status effects');
     tickDots(
       run,
       e.statuses,
@@ -944,6 +963,7 @@ export function heroAttack(run: Run, id: HeroId, targetUid: string): boolean {
   const target = validEnemyTargets(run, id, melee).find((e) => e.uid === targetUid);
   if (!target) return false;
   useMain(run, id);
+  beginEvent(run, id, 'Attack');
   log(run, `${h.name} attacks ${target.name}.`, 'hero');
   hitEnemy(run, h, target, { mult: 1, melee, basic: true });
   afterAction(run);
@@ -1003,6 +1023,7 @@ export function heroAbility(run: Run, id: HeroId, abilityId: string, target?: st
   }
 
   useMain(run, id);
+  beginEvent(run, id, a.name);
   log(run, `${h.name} uses ${a.name}${enemy ? ` on ${enemy.name}` : heroTarget ? ` on ${heroTarget.name}` : ''}.`, 'hero');
 
   switch (abilityId) {
@@ -1173,6 +1194,7 @@ export function heroUltimate(run: Run, id: HeroId): boolean {
   const h = getHero(run, id);
   const ally = getHero(run, other(id));
   useMain(run, id);
+  beginEvent(run, id, 'Duo Strike');
   c.teamMeter = 0;
   log(run, `DUO STRIKE! ${h.name} and ${ally.name} unleash everything!`, 'combo');
   for (const t of liveEnemies(run)) {
@@ -1222,6 +1244,7 @@ export function heroUseConsumable(run: Run, id: HeroId, beltIndex: number): bool
   const def = CONSUMABLES[stack.id];
   if (stack.id === 'smokeBomb' && !c.fleeAllowed) return false;
   me.minorUsed = true;
+  beginEvent(run, id, def.name);
   stack.qty -= 1;
   if (stack.qty <= 0) h.belt[beltIndex] = null;
   log(run, `${h.name} uses ${def.name}.`, 'hero');

@@ -9,6 +9,7 @@ import { CONSUMABLES } from '../../engine/data/items';
 import { abilityCooldown, derive } from '../../engine/character';
 import { bagToBelt, beltToBag, discardBag, drinkOutOfCombat, equipFromBag, salvageBag, unequip } from '../../engine/run';
 import { salvageValue } from '../../engine/items';
+import { CompareModal } from '../components/Compare';
 
 type Sel = { kind: 'bag'; index: number } | { kind: 'equip'; slot: EquipSlot } | { kind: 'belt'; index: number } | null;
 
@@ -18,6 +19,7 @@ export function Inventory({ onClose }: { onClose: () => void }) {
   const { run, act } = useGame();
   const [tab, setTab] = useState<HeroId>('p1');
   const [sel, setSel] = useState<Sel>(null);
+  const [comparing, setComparing] = useState(false);
   const readOnly = run.screen === 'combat';
   const h = run.heroes.find((x) => x.id === tab)!;
   const d = derive(h);
@@ -159,6 +161,9 @@ export function Inventory({ onClose }: { onClose: () => void }) {
                       Equip on {h.name}
                     </button>
                   )}
+                  <button class="small primary" onClick={() => setComparing(true)}>
+                    ⚖️ Compare
+                  </button>
                   <button class="small" onClick={() => doAct((r) => salvageBag(r, (sel as any).index))}>
                     ✦ Salvage (+{salvageValue(selBag.item)})
                   </button>
@@ -223,6 +228,28 @@ export function Inventory({ onClose }: { onClose: () => void }) {
           {!sel && <div class="small dim">Tap a slot to see the item and what you can do with it. Consumables must be on a belt to use them in combat (minor action).</div>}
         </div>
       </div>
+      {comparing && selBag?.type === 'item' && (
+        <CompareModal
+          item={selBag.item}
+          heroes={run.heroes}
+          onClose={() => setComparing(false)}
+          actions={
+            readOnly
+              ? undefined
+              : (hh, slot) => (
+                  <button
+                    onClick={() => {
+                      const idx = (sel as any).index;
+                      setComparing(false);
+                      doAct((r) => equipFromBag(r, hh.id, idx, slot));
+                    }}
+                  >
+                    Equip on {hh.name}
+                  </button>
+                )
+          }
+        />
+      )}
     </Modal>
   );
 }
