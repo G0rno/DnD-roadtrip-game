@@ -83,12 +83,17 @@ class VoiceEngine {
 
   init() {
     if (!this.supported) return;
-    const load = () => {
-      this.voices = speechSynthesis.getVoices();
-      this.emit();
-    };
+    const load = () => this.refresh();
     load();
     speechSynthesis.addEventListener?.('voiceschanged', load);
+    // iPad Safari often returns an empty or partial list at first and doesn't always fire
+    // 'voiceschanged': poll for a while, and re-read whenever the app comes back to the front.
+    let tries = 0;
+    const poll = setInterval(() => {
+      load();
+      if (++tries > 20) clearInterval(poll);
+    }, 500);
+    document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && load());
     // iPad Safari only allows speech after a user gesture: unlock on the first tap.
     const unlock = () => {
       this.unlock();
@@ -107,6 +112,22 @@ class VoiceEngine {
     speechSynthesis.speak(u);
   }
 
+  /** Re-reads the installed voices from the system. */
+  refresh() {
+    if (!this.supported) return;
+    const list = speechSynthesis.getVoices();
+    if (list.length !== this.voices.length || list.some((v, i) => v.voiceURI !== this.voices[i]?.voiceURI)) {
+      this.voices = list;
+      this.emit();
+    }
+  }
+
+  /** Every voice the browser exposes (for the diagnostic list in Settings). */
+  allVoices(): SpeechSynthesisVoice[] {
+    this.refresh();
+    return this.voices;
+  }
+
   onChange(l: Listener) {
     this.listeners.add(l);
     return () => this.listeners.delete(l);
@@ -122,6 +143,7 @@ class VoiceEngine {
 
   /** Voices for the narration language, best first. */
   candidates(lang = this.settings.lang): SpeechSynthesisVoice[] {
+    this.refresh();
     const pref = lang === 'fr' ? ['fr-CA', 'fr-FR', 'fr'] : ['en-US', 'en-GB', 'en-AU', 'en-IE', 'en'];
     return this.voices
       .filter((v) => v.lang.toLowerCase().startsWith(lang) && !EXCLUDE.test(v.name))

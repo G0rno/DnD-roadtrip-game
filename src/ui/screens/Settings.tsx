@@ -14,6 +14,8 @@ export function SettingsModal({ settings, setSettings, run, onClose }: { setting
   const [key, setKey] = useState(getApiKey());
   const [show, setShow] = useState(false);
   const [status, setStatus] = useState('');
+  const [showVoices, setShowVoices] = useState(false);
+  const [, bump] = useState(0);
   const meta = loadMeta();
   const runCost = run?.story?.cost;
 
@@ -112,8 +114,39 @@ export function SettingsModal({ settings, setSettings, run, onClose }: { setting
             </button>
             {!wakeLockSupported() && <span class="tiny" style={{ color: '#f0a39c' }}>Not supported here: set iPad Auto-Lock to Never while playing.</span>}
           </div>
+          <div class="row wrap">
+            <span class="small">
+              Voices found: {voice.candidates('en').length} English, {voice.candidates('fr').length} French ({voice.allVoices().length} in total)
+            </span>
+            <button
+              class="small"
+              onClick={() => {
+                voice.refresh();
+                bump((v) => v + 1);
+              }}
+            >
+              🔄 Refresh voices
+            </button>
+            <button class="small" onClick={() => setShowVoices(!showVoices)}>
+              {showVoices ? 'Hide' : 'Show'} all voices
+            </button>
+          </div>
+          {showVoices && (
+            <div class="scroll tiny" style={{ maxHeight: '180px', background: '#141116', borderRadius: '8px', padding: '6px 10px' }}>
+              {voice
+                .allVoices()
+                .filter((v) => /^(en|fr)/i.test(v.lang))
+                .map((v) => (
+                  <div>
+                    {v.name} · {v.lang}
+                    {/premium/i.test(v.voiceURI) ? ' · Premium' : /enhanced/i.test(v.voiceURI) ? ' · Enhanced' : ''}
+                    <span class="dim"> · {v.voiceURI}</span>
+                  </div>
+                ))}
+            </div>
+          )}
           <div class="tiny dim">
-            For the best voices, download Enhanced or Premium voices (English and French) on the iPad: Settings → Accessibility → Spoken Content → Voices. They work offline. Use 🌑 in the top bar to black out the screen while audio keeps playing.
+            Better voices: on the iPad, Settings → Accessibility → Spoken Content → Voices, then pick a non-Siri voice with "Enhanced" or "Premium" (Siri voices can't be used by websites). After downloading, fully close the game (swipe it away in the app switcher) and reopen it; if they still don't show, restart the iPad. They work offline. Use 🌑 in the top bar to black out the screen while audio keeps playing.
           </div>
         </div>
 
