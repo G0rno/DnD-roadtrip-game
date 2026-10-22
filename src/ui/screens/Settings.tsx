@@ -146,7 +146,7 @@ export function SettingsModal({ settings, setSettings, run, onClose }: { setting
             </div>
           )}
           <div class="tiny dim">
-            Better voices: on the iPad, Settings → Accessibility → Spoken Content → Voices, then pick a non-Siri voice with "Enhanced" or "Premium" (Siri voices can't be used by websites). After downloading, fully close the game (swipe it away in the app switcher) and reopen it; if they still don't show, restart the iPad. They work offline. Use 🌑 in the top bar to black out the screen while audio keeps playing.
+            On iPad, Safari and home-screen web apps can only use the voices built into iPadOS. Apple doesn't let websites use downloaded Enhanced, Premium or Siri voices, so they won't appear here. Pick the narrator you like best from the list. Use 🌑 in the top bar to black out the screen while audio keeps playing.
           </div>
         </div>
 
